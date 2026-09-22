@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; font-src 'self' data:;" />
+  <title>数模智能体</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- 顶栏 -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">∑</span>
+        <div class="brand-text">
+          <h1>数模智能体</h1>
+          <p class="sub" id="wsPath" title="当前工作区">未设置工作区</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span class="badge" id="modelBadge">未配置模型</span>
+        <button id="btnWorkspace" class="btn ghost">工作区</button>
+        <button id="btnEnv" class="btn ghost">运行环境</button>
+        <button id="btnSettings" class="btn primary">设置</button>
+      </div>
+    </header>
+
+    <!-- 左侧栏 -->
+    <aside class="sidebar">
+      <section class="side-block">
+        <div class="side-head">
+          <span>会话</span>
+          <button id="btnNewSession" class="icon-btn" title="新建会话">＋</button>
+        </div>
+        <ul id="sessionList" class="session-list"></ul>
+      </section>
+      <section class="side-block grow">
+        <div class="side-head">
+          <span>工作区文件</span>
+          <button id="btnRefreshFiles" class="icon-btn" title="刷新">⟳</button>
+        </div>
+        <ul id="fileTree" class="file-tree"></ul>
+      </section>
+    </aside>
+
+    <!-- 对话主区 -->
+    <main class="chat">
+      <div id="messages" class="messages">
+        <div class="empty-state" id="emptyState">
+          <div class="empty-logo">∑</div>
+          <h2>数模智能体</h2>
+          <p>三阶段建模流水线 · draw.io 竞赛模式出图 · 可自填 API 与模型</p>
+          <div class="quick-cards" id="quickCards"></div>
+        </div>
+      </div>
+
+      <div class="composer">
+        <textarea id="input" rows="3"
+          placeholder="描述你的题目或任务，例如：把 CUMCM 2024 A 题做完整流程，论文出 Word 版"></textarea>
+        <div class="composer-bar">
+          <span class="hint" id="statusHint"></span>
+          <div class="composer-btns">
+            <button id="btnStop" class="btn danger hidden">停止</button>
+            <button id="btnSend" class="btn primary">发送</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- 右侧预览 -->
+    <aside class="preview hidden" id="previewPane">
+      <div class="preview-head">
+        <span id="previewTitle">预览</span>
+        <div>
+          <button id="btnPreviewOpen" class="icon-btn" title="用系统程序打开">↗</button>
+          <button id="btnPreviewClose" class="icon-btn" title="关闭">✕</button>
+        </div>
+      </div>
+      <div class="preview-body" id="previewBody"></div>
+    </aside>
+  </div>
+
+  <!-- 设置抽屉 -->
+  <div class="mask hidden" id="mask"></div>
+  <aside class="drawer hidden" id="drawer">
+    <div class="drawer-head">
+      <h2 id="drawerTitle">设置</h2>
+      <button class="icon-btn" id="btnDrawerClose">✕</button>
+    </div>
+    <div class="drawer-body" id="drawerBody"></div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>

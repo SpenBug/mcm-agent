@@ -1,0 +1,10 @@
+# 依赖与构建产物
+node_modules/
+dist/
+*.log
+.DS_Store
+Thumbs.db
+
+# 第三方版权资料不入库：COMAP / CUMCM 优秀论文集（O奖论文 PDF）
+# 完整技能库请从本地 ~/.agents/skills/ 复制该目录，见 README「技能库」一节。
+resources/skills/math-modeling/references/Outstanding Thesis/**/*.pdf

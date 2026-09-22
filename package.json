@@ -1,0 +1,77 @@
+{
+  "name": "mcm-agent",
+  "productName": "数模智能体",
+  "version": "1.0.0",
+  "description": "数学建模智能体：三阶段建模流水线 + draw.io 竞赛模式出图，支持自填 API 与自选模型",
+  "main": "src/main/index.js",
+  "author": {
+    "name": "SpenBug",
+    "email": "921828874@qq.com"
+  },
+  "license": "MIT",
+  "private": true,
+  "devDependencies": {
+    "electron": "^44.4.3",
+    "electron-builder": "^26.15.3"
+  },
+  "scripts": {
+    "start": "node scripts/dev.js",
+    "start:nogpu": "node scripts/dev.js --no-gpu",
+    "smoke": "node scripts/dev.js --smoke --no-gpu",
+    "test:loop": "node scripts/test-agent-loop.js",
+    "test:tools": "node scripts/test-tools.js",
+    "test:modeling": "node scripts/test-modeling.js",
+    "pack": "node node_modules/electron-builder/cli.js --win --dir",
+    "dist": "node node_modules/electron-builder/cli.js --win"
+  },
+  "build": {
+    "appId": "com.spenbug.mcm-agent",
+    "productName": "数模智能体",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/skills",
+        "to": "skills"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "数模智能体"
+    },
+    "portable": {
+      "artifactName": "数模智能体-便携版-${version}.exe"
+    }
+  },
+  "dependencies": {
+    "app-builder-lib": "^26.15.3"
+  }
+}
