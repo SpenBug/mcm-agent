@@ -2,6 +2,15 @@
 
 把 `math-modeling` 技能做成了一个**可独立运行的 Windows 桌面应用**：自己填 API Key、自己选模型，内置完整的三阶段建模流水线，并用 `scibox-diagram` 的**竞赛模式取代了原来的流程图环节**。
 
+## 直接下载
+
+| 版本 | 说明 |
+|---|---|
+| **[便携版](https://github.com/SpenBug/mcm-agent/releases/download/v1.0.0/mcm-agent-portable-1.0.0.exe)** | 双击即用，不写注册表（推荐先试这个） |
+| **[安装包](https://github.com/SpenBug/mcm-agent/releases/download/v1.0.0/mcm-agent-setup-1.0.0.exe)** | NSIS，可换安装目录、建桌面 / 开始菜单快捷方式 |
+
+全部版本见 [Releases](https://github.com/SpenBug/mcm-agent/releases)。
+
 ---
 
 ## 一、它解决什么
@@ -61,12 +70,16 @@ npm run pack           # 只产出免安装目录（调试用）
 
 ## 三、内置能力
 
-### 技能库（打包在 `resources/skills/`，共 362 个文件 / 63 MB）
+### 技能库（打包在 `resources/skills/`）
 
 | 技能 | 内容 | 体积 |
 |---|---|---|
-| `math-modeling` | 三阶段角色（建模手 / 编程手 / 论文手）、PDF·Excel·绘图·Word·LaTeX·论文搜索工具链、算法索引、2017 MCM 优秀论文集、华为杯 2026 官方附件 | 60 MB |
+| `math-modeling` | 三阶段角色（建模手 / 编程手 / 论文手）、PDF·Excel·绘图·Word·LaTeX·论文搜索工具链、算法索引、华为杯 2026 官方附件 | 5.7 MB |
 | `scibox-diagram` | 9 套示意图模板 + 12 个 Python 脚本（渲染 / 校验 / 导出 / 预览）、竞赛模式规范 | 3.1 MB |
+
+> **关于优秀论文集**：本仓库的技能库**不含** COMAP / CUMCM 优秀论文 PDF（`references/Outstanding Thesis/`，约 54MB）。
+> 那部分属第三方版权资料，不适合公开分发。本地开发时从 `~/.agents/skills/math-modeling/references/` 复制过来即可。
+> 该目录只影响「参考往届优秀论文」这一项能力，不影响建模、出图与写作流程。
 
 ### 出图分工（关键）
 
