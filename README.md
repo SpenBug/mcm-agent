@@ -1,13 +1,29 @@
-# 数模智能体（mcm-agent）
+<h1 align="center">数模智能体</h1>
 
-把 `math-modeling` 技能做成了一个**可独立运行的 Windows 桌面应用**：自己填 API Key、自己选模型，内置完整的三阶段建模流水线，并用 `scibox-diagram` 的**竞赛模式取代了原来的流程图环节**。
+<p align="center">
+把 <code>math-modeling</code> 技能做成一个<b>可独立运行的 Windows 桌面应用</b>：自填 API Key、自选模型，内置完整三阶段建模流水线。
+</p>
+
+<p align="center">
+  <a href="https://github.com/SpenBug/mcm-agent/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/SpenBug/mcm-agent?label=release&color=285d7c"></a>
+  <a href="https://github.com/SpenBug/mcm-agent/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/SpenBug/mcm-agent/total?label=downloads&color=285d7c"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/SpenBug/mcm-agent?label=license&color=285d7c"></a>
+  <img alt="Platform" src="https://img.shields.io/badge/platform-Windows%2010%2B%20x64-285d7c">
+  <img alt="Runtime" src="https://img.shields.io/badge/runtime-Electron%20%2B%20Python-285d7c">
+</p>
+
+<p align="center">
+  <img src="build/icon.png" alt="icon" width="120">
+</p>
+
+---
 
 ## 直接下载
 
 | 版本 | 说明 |
-|---|---|
-| **[便携版](https://github.com/SpenBug/mcm-agent/releases/download/v1.0.0/mcm-agent-portable-1.0.0.exe)** | 双击即用，不写注册表（推荐先试这个） |
-| **[安装包](https://github.com/SpenBug/mcm-agent/releases/download/v1.0.0/mcm-agent-setup-1.0.0.exe)** | NSIS，可换安装目录、建桌面 / 开始菜单快捷方式 |
+| --- | --- |
+| **[便携版](https://github.com/SpenBug/mcm-agent/releases/latest/download/math-modeling-agent-portable-1.0.0.exe)** | 双击即用，不写注册表（推荐先试这个） |
+| **[安装包](https://github.com/SpenBug/mcm-agent/releases/latest/download/math-modeling-agent-setup-1.0.0.exe)** | NSIS，可换安装目录、建桌面 / 开始菜单快捷方式 |
 
 全部版本见 [Releases](https://github.com/SpenBug/mcm-agent/releases)。
 
@@ -24,12 +40,147 @@
 
 ---
 
-## 二、快速开始
+## 二、三阶段流水线
+
+一道题从分析到成稿，被拆成三个**独立角色**，每个角色有自己的交付物和完成门禁：
+
+```mermaid
+flowchart LR
+    Q(["赛题 + 附件"]) --> M
+
+    subgraph M["① 建模手"]
+        direction TB
+        M1["题目分析<br/>选模型 · 定变量 · 立假设"]
+        M2["交付物<br/>模型说明 + 求解方案"]
+        M1 --> M2
+    end
+
+    subgraph C["② 编程手"]
+        direction TB
+        C1["按模型写代码<br/>跑真实结果"]
+        C2["交付物<br/>可复现代码 + 结果 + 数据图"]
+        C1 --> C2
+    end
+
+    subgraph P["③ 论文手"]
+        direction TB
+        P1["按官方模板成稿<br/>图表 / 公式 / 参考文献"]
+        P2["交付物<br/>论文（LaTeX 或 Word）"]
+        P1 --> P2
+    end
+
+    M2 ==> C1
+    C2 ==> P1
+
+    SUB{{"独立 Subagent 质检<br/>阶段内验收"}}
+    M2 -. 质检 .-> SUB
+    C2 -. 质检 .-> SUB
+    P2 -. 质检 .-> SUB
+    SUB -. "FAIL：带证据回退修正" .-> M
+    SUB -. "FAIL：带证据回退修正" .-> C
+    SUB -. "FAIL：带证据回退修正" .-> P
+
+    P2 --> OUT(["成稿 + 图源 + 代码"])
+```
+
+**三条硬约束**（都写在系统提示词里，不是靠模型自觉）：
+
+1. **每个阶段开始前必须实际读取该角色的 `SKILL.md`** —— 知道文件路径不等于已经执行；
+2. **交付前必须跑完该角色规定的全部完成门禁** —— 任一命令未运行、退出码非零、或产物在门禁后被改动，都不允许声称「已完成」；
+3. **门禁 `FAIL` 必须带证据回退** —— 编程手发现公式不完整/约束冲突时停止猜测、回到建模手修正；论文手发现结论没有真实结果支撑时回到前序阶段补齐，**禁止编造**。
+
+也可以只跑单个角色（只做题目分析 / 只写代码出图 / 只写论文），此时不强制完整流程。
+
+---
+
+## 三、架构
+
+```mermaid
+flowchart TB
+    subgraph R["渲染进程 · 原生 JS，无框架"]
+        UI["三栏布局<br/>会话 / 对话 / 文件树与预览"]
+    end
+
+    subgraph M["主进程 · Electron"]
+        IPC["ipc.js<br/>IPC 路由"]
+        LOOP["agent/loop.js<br/>Agent 循环"]
+        PR["agent/prompt.js<br/>系统提示词装配<br/>技能路由 + 出图分工"]
+        LLM["agent/llm.js<br/>OpenAI 兼容流式客户端<br/>含 tool calling"]
+        TB["agent/tools.js<br/>7 个工具 + 路径沙箱"]
+    end
+
+    subgraph RT["运行时探测"]
+        PY["runtime/python.js<br/>探测 · venv · 依赖安装"]
+        DR["runtime/drawio.js<br/>draw.io 探测 · 导出"]
+    end
+
+    subgraph SK["内置技能库（只读）"]
+        S1["math-modeling<br/>三阶段角色 + 工具链 + 算法索引"]
+        S2["scibox-diagram<br/>9 套示意图模板 + 12 个脚本"]
+    end
+
+    UI <--> IPC
+    IPC <--> LOOP
+    LOOP --> PR
+    LOOP --> LLM
+    LOOP --> TB
+    PR -. 读取 .-> SK
+    IPC --> PY
+    IPC --> DR
+
+    LLM -. SSE .-> EXT["8 家服务商预设<br/>或任意 OpenAI 兼容网关"]
+    TB -. "写操作限定工作区内<br/>技能库只读" .-> WS["工作区<br/>figures / code / results / reports"]
+    DR -.-> DIO["draw.io 桌面版"]
+```
+
+**工作区**默认在 `文档\数模智能体工作区`，可在顶栏切换。所有产物写在工作区里，**技能库只读**。
+
+---
+
+## 四、出图分工
+
+数学建模的图分两类，走**两套完全不同的工具链** —— 这是本应用和原技能最大的区别：
+
+```mermaid
+flowchart TD
+    START(["需要一张图"]) --> Q{"是什么图？"}
+
+    Q -->|"折线 / 柱状 / 散点<br/>热图 / 箱线 / 误差曲线"| D1["数据图"]
+    Q -->|"技术路线图 / 子问题流程图<br/>数据处理流程 / 模型结构图<br/>指标体系图 / 决策树"| D2["非数据图"]
+
+    D1 --> T1["math-modeling/tools/figure<br/>Matplotlib + Nature/SCI 视觉流程"]
+    D2 --> T2["scibox-diagram 竞赛模式<br/>draw.io 渲染"]
+
+    T1 --> O1["raw_qN_* / process_qN_* / result_qN_*"]
+    T2 --> O2["fig_roadmap · fig_flow_qN<br/>fig_pipeline · fig_model<br/>fig_index_system · fig_decision_tree"]
+    O2 --> O3["figures/*.drawio（可编辑源文件）<br/>+ figures/*.pdf（论文引用的矢量图）"]
+
+    style D2 fill:#e7f1f5,stroke:#6c94ac
+    style T2 fill:#e7f1f5,stroke:#6c94ac
+    style O3 fill:#eef3e8,stroke:#98ad7d
+```
+
+**非数据图不再用 Matplotlib 手绘。** 竞赛模式产出：
+
+```
+figures/
+  fig_roadmap.drawio    fig_roadmap.pdf
+  fig_flow_q1.drawio    fig_flow_q1.pdf
+  ...
+reports/DRAWIO_REPORT.md
+```
+
+`.drawio` 是可编辑源文件（能在 draw.io 桌面版 / 网页版里直接改），`.pdf` 是论文引用的矢量图。
+
+---
+
+## 五、快速开始
 
 ### 开发态运行
 
 ```bash
-cd D:\数学建模项目\mcm-agent
+git clone https://github.com/SpenBug/mcm-agent.git
+cd mcm-agent
 npm install
 npm start              # 常规启动
 npm start:nogpu        # 虚拟机 / 远程桌面 / 无 GPU 环境
@@ -68,7 +219,7 @@ npm run pack           # 只产出免安装目录（调试用）
 
 ---
 
-## 三、内置能力
+## 六、内置能力
 
 ### 技能库（打包在 `resources/skills/`）
 
@@ -81,30 +232,9 @@ npm run pack           # 只产出免安装目录（调试用）
 > 那部分属第三方版权资料，不适合公开分发。本地开发时从 `~/.agents/skills/math-modeling/references/` 复制过来即可。
 > 该目录只影响「参考往届优秀论文」这一项能力，不影响建模、出图与写作流程。
 
-### 出图分工（关键）
-
-数学建模的图分两类，走**两套完全不同的工具链** —— 这是本应用和原技能最大的区别：
-
-| 图型 | 例子 | 工具链 | 命名 |
-|---|---|---|---|
-| **数据图** | 折线、柱状、散点、热图、箱线、误差曲线 | `math-modeling/tools/figure`（Matplotlib + Nature/SCI 视觉流程） | `raw_qN_*` / `process_qN_*` / `result_qN_*` |
-| **非数据图** | 技术路线图、子问题流程图、数据处理流程、模型结构图、指标体系图、决策树 | **`scibox-diagram` 竞赛模式（draw.io）** | `fig_roadmap` / `fig_flow_qN` / `fig_pipeline` / `fig_model` / `fig_index_system` / `fig_decision_tree` |
-
-非数据图**不再用 Matplotlib 手绘**。竞赛模式产出：
-
-```
-figures/
-  fig_roadmap.drawio    fig_roadmap.pdf
-  fig_flow_q1.drawio    fig_flow_q1.pdf
-  ...
-reports/DRAWIO_REPORT.md
-```
-
-`.drawio` 是可编辑源文件（能在 draw.io 桌面版/网页版里直接改），`.pdf` 是论文引用的矢量图。
-
 ---
 
-## 四、目录结构
+## 七、目录结构
 
 ```
 mcm-agent/
@@ -136,11 +266,9 @@ mcm-agent/
 └── dist/                      # 打包产物
 ```
 
-**工作区**默认在 `文档\数模智能体工作区`，可在顶栏切换。所有产物写在工作区里，技能库只读。
-
 ---
 
-## 五、Agent 能用的工具
+## 八、Agent 能用的工具
 
 | 工具 | 用途 |
 |---|---|
@@ -152,13 +280,15 @@ mcm-agent/
 | `run_command` | 跑技能脚本、编译、导出 |
 | `run_python` | 直接执行 Python 代码片段或脚本 |
 
-安全约束：写操作只能落在工作区内；读技能库要用 `skills/` 前缀；命令有超时保护（默认 180s，上限 15min）。
+**安全约束**：写操作只能落在工作区内；读技能库要用 `skills/` 前缀；命令有超时保护（默认 180s，上限 15min）。
 
 ---
 
-## 六、实测验证结果
+## 九、实测验证结果
 
-### 6.1 Agent 内核离线验证（`npm run test:loop`）
+这一节记录的是**真跑出来的输出**，不是设计意图。
+
+### 9.1 Agent 内核离线验证（`npm run test:loop`）
 
 用本地 mock LLM 服务器跑通完整链路，**不需要真实 API Key**：
 
@@ -183,7 +313,7 @@ mcm-agent/
 结果：13/13 通过
 ```
 
-### 6.2 界面与后端链路（`npm run smoke`）
+### 9.2 界面与后端链路（`npm run smoke`）
 
 开发态与打包后各跑一次，均通过：
 
@@ -197,10 +327,11 @@ mcm-agent/
 沙箱   : 越界写入 ../../evil.txt 被拦截 ✓
 Python : 应用私有 venv 已就绪，依赖「已装 8 项，缺 0 项」
 draw.io: 自动探测到 D:\Drawio\draw.io\draw.io.exe
+
 打包后 : skillsRoot 正确指向 resources\skills，362 个技能文件齐全
 ```
 
-### 6.3 竞赛模式出图端到端验证
+### 9.3 竞赛模式出图端到端验证
 
 用 `task-bands` 模板跑了一遍真实的四任务技术路线图：
 
@@ -214,7 +345,7 @@ draw.io: 自动探测到 D:\Drawio\draw.io\draw.io.exe
          黑色推进箭头 —— 结构完整，与源数据一致
 ```
 
-### 6.4 工具层完整验证（`npm run test:tools`）
+### 9.4 工具层完整验证（`npm run test:tools`）
 
 7 个工具的正面用例 + 边界 + 路径沙箱，共 **37 项断言全部通过**：
 
@@ -230,7 +361,7 @@ draw.io: 自动探测到 D:\Drawio\draw.io\draw.io.exe
 ✓ 技能库只读   写/编辑 skills/ 前缀被拒，且不在工作区留残留目录
 ```
 
-### 6.5 IPC 链路验证（含在 `npm run smoke`）
+### 9.5 IPC 链路验证（含在 `npm run smoke`）
 
 12 项断言全部通过 —— 走完整的「渲染进程 → preload → 主进程」链路：
 
@@ -243,9 +374,9 @@ draw.io: 自动探测到 D:\Drawio\draw.io\draw.io.exe
 ✓ 连通性失败优雅返回        ✓ 未配 Key 时给明确提示而非崩溃
 ```
 
-### 6.6 端到端对话验证（含在 `npm run smoke`）
+### 9.6 端到端对话验证（含在 `npm run smoke`）
 
-**这是最关键的一条** —— 前面几层测试都有盲区，只有它能抓到"消息组装错了"这类 bug。
+**这是最关键的一条** —— 前面几层测试都有盲区，只有它能抓到「消息组装错了」这类 bug。
 
 做法：启动本地 mock LLM，**从界面填输入框 → 点发送按钮**（不直接调 IPC，确保覆盖渲染层的组装逻辑），然后检查 mock 收到的请求：
 
@@ -261,7 +392,7 @@ draw.io: 自动探测到 D:\Drawio\draw.io\draw.io.exe
 > 这条用例真抓到过 bug：渲染进程曾把 `messages` 写成 `state.messages.slice(0, -0)` —— 因为 `-0 === 0`，它等价于 `slice(0, 0)`，返回**空数组**，用户消息根本传不到主进程。
 > 模块级测试（直接调 `runAgent`）和守卫分支测试都发现不了它。修好后把 bug 临时改回去复跑，确认测试报出 `实际 roles=[system]` —— 证明这条断言不是摆设。
 
-### 6.7 建模能力端到端验证（`npm run test:modeling`）
+### 9.7 建模能力端到端验证（`npm run test:modeling`）
 
 前面几层测的都是「函数返回了正确的东西」，**从没真的让 matplotlib 出过图**。这条补上：用 mock LLM 驱动一遍完整的「写脚本 → 跑脚本 → 出图」。
 
@@ -291,7 +422,7 @@ draw.io: 自动探测到 D:\Drawio\draw.io\draw.io.exe
 
 ---
 
-## 七、draw.io 集成
+## 十、draw.io 集成
 
 应用启动时会**自动探测 draw.io 桌面版** —— 先扫常见安装目录（Program Files / LocalAppData / 各盘符的 `Drawio\draw.io`），再从开始菜单 `.lnk` 里挖路径（纯二进制解析，不用 COM，避免权限拦截）。
 
@@ -309,7 +440,9 @@ drawio <输入文件.drawio> --no-sandbox --disable-gpu --export --format pdf --
 
 （`scibox-diagram` 自带的 `preview_html.py` 走的是 `embed.diagrams.net` 在线 viewer，离线或网络受限时是空白 —— 那不是图画错了。）
 
-## 八、已知限制
+---
+
+## 十一、已知限制
 
 - **未安装 draw.io 桌面版时**，竞赛模式只能产出 `.drawio` 源文件，无法导出 PDF。Agent 会如实记录失败原因，不会假装已导出。
 - **LaTeX 论文**需要本机有 TeX 发行版（如 TeX Live / MiKTeX）；没有时只能出 Word 版。
@@ -318,7 +451,7 @@ drawio <输入文件.drawio> --no-sandbox --disable-gpu --export --format pdf --
 
 ---
 
-## 九、开发环境踩坑记录
+## 十二、开发环境踩坑记录
 
 这台机器上打包时遇到的、值得记下来的坑：
 
@@ -337,7 +470,7 @@ drawio <输入文件.drawio> --no-sandbox --disable-gpu --export --format pdf --
 
 ---
 
-## 十、二次开发提示
+## 十三、二次开发提示
 
 - 改**系统提示词**（技能路由、出图分工）→ `src/main/agent/prompt.js`
 - 加**新工具** → `src/main/agent/tools.js` 的 `TOOL_DEFS` + `executeTool`
