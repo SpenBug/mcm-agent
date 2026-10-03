@@ -1,0 +1,37 @@
+{
+  "columns": [
+    {
+      "title": "数据处理",
+      "items": [
+        {"text": "数据集来源", "tone": "deep"},
+        {"text": "样本选择", "tone": "mid"},
+        {"text": "数据预处理", "tone": "light"},
+        {"text": "数据的切分", "tone": "light"},
+        {"chart": "样本时域波形与指标图"}
+      ]
+    },
+    {
+      "title": "特征提取",
+      "items": [
+        {"group": {
+          "title": "散点特征",
+          "left": "时域特征",
+          "right": "频域特征",
+          "boxes": ["波形指标", "裕度指标", "偏心概率", "均方频率", "峭度频率", "频率方差"]
+        }},
+        {"text": "散点特征", "tone": "mid"},
+        {"text": "样本数据", "tone": "mid"},
+        {"text": "图像生成", "tone": "mid"}
+      ]
+    },
+    {
+      "title": "特征分析",
+      "items": [
+        {"text": "统计描述", "tone": "deep"},
+        {"text": "重要性评价", "tone": "mid"},
+        {"text": "t-SNE降维", "tone": "mid"},
+        {"chart": "降维散点聚类分布图"}
+      ]
+    }
+  ]
+}
