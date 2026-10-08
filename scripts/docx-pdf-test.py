@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 
-APP_PY = r"C:\Users\92182\AppData\Roaming\数模工坊\python-env\Scripts\python.exe"
+APP_PY = r"C:\Users\92182\AppData\Roaming\阿一古数模\python-env\Scripts\python.exe"
 SCRIPT = r"D:\数学建模项目\mcm-agent\resources\skills\mcm-tools\scripts\mcm_docx.py"
 
 WS = tempfile.mkdtemp(prefix="pdftest-")

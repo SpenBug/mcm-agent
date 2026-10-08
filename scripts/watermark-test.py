@@ -11,7 +11,7 @@ import sys
 import tempfile
 import zipfile
 
-APP_PY = r"C:\Users\92182\AppData\Roaming\数模工坊\python-env\Scripts\python.exe"
+APP_PY = r"C:\Users\92182\AppData\Roaming\阿一古数模\python-env\Scripts\python.exe"
 ROOT = r"D:\数学建模项目\mcm-agent"
 STYLE = os.path.join(ROOT, "resources", "skills", "mcm-figure", "scripts")
 DOCX = os.path.join(ROOT, "resources", "skills", "mcm-tools", "scripts", "mcm_docx.py")

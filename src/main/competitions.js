@@ -20,11 +20,17 @@
  *    - 亚太赛：APMCM 中文赛项题目发布 —— 06-12 18:00 → 06-15 20:00
  *    - 数维杯：nmmcm.org.cn《关于大赛》—— 报名截止 11-20 06:00，
  *      11-20 09:00 → 11-24 09:00，论文 11-24 10:00 截止
- *    - MathorCup：mathorcup.org —— 04-17 08:00 → 04-21 09:00
+ *    - MathorCup 数学建模：mathorcup.org —— 04-17 08:00 → 04-21 09:00
+ *    - MathorCup 大数据：报名通知（2026-08-20）—— 报名截止 10-23 12:00，
+ *      初赛 10-23 18:00 → 10-30 20:00（7 天），复赛 12-04 18:00 → 12-11 20:00
+ *    - 华数杯：赛氪赛题发布 —— 08-07 18:00 → 08-10 20:00
+ *    - 华数杯国际：赛氪赛题发布 —— 2026-01-17 06:00 → 01-21 09:00
  *    - 美赛 2027：官方未公布 → tba
  *
  * 4. **价目表是用户确认过的商业决策**，不要随手改：
- *    国赛 69 / 华为杯 79 / 美赛 79 / 亚太 49 / 数维杯 39 / 小赛 29 / 全能包 168。
+ *    国赛 69 / 华为杯 79 / 美赛 79 / 全能包 168；
+ *    数维杯·亚太·大数据·华数杯·华数杯国际 统一 **39**（四天以上大型赛事）；
+ *    MathorCup 数学建模与其他小赛 29。
  */
 
 const HOUR = 3600 * 1000;
@@ -40,8 +46,13 @@ const PRICES = {
   cumcm: 69,
   huawei: 79,
   mcm: 79,
-  apmcm: 49,
+  // ¥39 档：四天以上的大型赛事（数维杯 / 亚太 / 大数据 / 华数杯 / 华数杯国际）
   shuwei: 39,
+  apmcm: 39,
+  bigdata: 39,
+  huashu: 39,
+  huashu_intl: 39,
+  // ¥29 档：小赛
   mathorcup: 29,
   others: 29,
   all: 168,
@@ -136,6 +147,49 @@ const COMPETITIONS = [
     next: '2027 届时间待官方公布（往年 6 月中旬）',
   },
   {
+    id: 'bigdata',
+    name: 'MathorCup 大数据赛',
+    fullName: 'MathorCup 数学应用挑战赛 — 大数据竞赛（第七届）',
+    price: PRICES.bigdata,
+    startAt: cn('2026-10-23T18:00:00+08:00'),
+    endAt: cn('2026-10-30T20:00:00+08:00'),
+    regDeadline: cn('2026-10-23T12:00:00+08:00'),
+    url: 'http://www.mathorcup.org',
+    regUrl: 'https://m.saikr.com/bigdata2026',
+    fee: 200,
+    note: '7 天赛（10-23 → 10-30）；需提交论文 + 结果数据集 + 源程序。'
+      + '初赛前 10% 进复赛（12-04 18:00 → 12-11 20:00）',
+    tier: 'main',
+  },
+  {
+    id: 'huashu',
+    name: '华数杯',
+    fullName: '华数杯大学生数学建模竞赛（第七届）',
+    price: PRICES.huashu,
+    startAt: cn('2026-08-07T18:00:00+08:00'),
+    endAt: cn('2026-08-10T20:00:00+08:00'),
+    regDeadline: null,
+    url: 'https://m.saikr.com/chinamcm26',
+    fee: null,
+    note: '2026 届已结束（常被称为国赛热身赛）；2027 届时间待官方公布',
+    tier: 'main',
+    next: '2027 届时间待官方公布（往年 8 月上旬）',
+  },
+  {
+    id: 'huashu_intl',
+    name: '华数杯国际赛',
+    fullName: '华数杯国际大学生数学建模竞赛（第四届）',
+    price: PRICES.huashu_intl,
+    startAt: cn('2026-01-17T06:00:00+08:00'),
+    endAt: cn('2026-01-21T09:00:00+08:00'),
+    regDeadline: null,
+    url: 'https://m.saikr.com/mcmicm2026',
+    fee: null,
+    note: '英文论文，4 天赛；常作为美赛选拔赛/热身。2026 届已结束，2027 届时间待公布',
+    tier: 'main',
+    next: '2027 届时间待官方公布（往年 1 月中旬）',
+  },
+  {
     id: 'mathorcup',
     name: 'MathorCup',
     fullName: 'MathorCup 高校数学建模挑战赛',
@@ -144,7 +198,7 @@ const COMPETITIONS = [
     endAt: cn('2026-04-21T09:00:00+08:00'),
     regDeadline: cn('2026-04-16T12:00:00+08:00'),
     url: 'https://www.mathorcup.org/',
-    note: '2026 届已结束',
+    note: '2026 届已结束。⚠️ 这是数学建模赛项；大数据赛项是另一场（见 bigdata）',
     tier: 'small',
     next: '2027 届时间待官方公布',
   },
@@ -223,14 +277,44 @@ function unlocks(competition, id) {
   return competition === id;
 }
 
+// ===========================================================================
+// 邀请码
+// ===========================================================================
+//
+// 设计：**邀请码 = 卡号后 6 位数字**（`MCM-2026-0005` → `260005`）。
+//
+// 为什么不搞本地自动计数：应用是纯离线的，本地记录朋友用了谁的码，
+// 用户删掉 license.json 或改个 JSON 就重置了 —— 那个"满 3 人送一期"
+// 等于没有。所以软件**只负责展示邀请码**，减价与送卡都由卖家在微信里
+// 人工完成（用 tools/issue.js invite 记账，满 3 会自动提醒）。
+//
+// 邀请码是"谁推荐的"的标识，不是凭证：它没有签名，猜到了也没用 ——
+// 减价要卖家确认，送卡更是卖家发。
+
+/** 从卡号派生邀请码：取末尾 6 位数字。派不出来返回 null。 */
+function inviteCodeFromCard(card) {
+  const digits = String(card || '').replace(/\D/g, '');
+  if (digits.length < 6) return null;
+  return digits.slice(-6);
+}
+
+/** 邀请规则（展示给用户看，也供卖家口径对齐） */
+const INVITE_RULES = {
+  friendDiscount: 5,      // 朋友购买立减（元）
+  threshold: 3,           // 满几人送一期
+  reward: '一期比赛的使用权',
+};
+
 module.exports = {
   PRICES,
   COMPETITIONS,
   STATUS_TEXT,
+  INVITE_RULES,
   statusOf,
   list,
   get,
   defaultCurrent,
   unlocks,
+  inviteCodeFromCard,
   HOUR,
 };

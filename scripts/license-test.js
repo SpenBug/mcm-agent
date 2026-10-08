@@ -149,6 +149,15 @@ mj3.trialMachine = REAL_MACHINE;
 fs.writeFileSync(path.join(T3, 'machine.json'), JSON.stringify(mj3));
 check('体验期用完且无凭证 → expired', L.getLicenseState(T3, { now }).mode === 'expired');
 
+// 付费卡到期（过了宽限期）：要能区分出"是卡过期"而不是"没激活过"
+const longExpired = sign({ card: 'MCM-2026-0099', machine: REAL_MACHINE, competition: 'cumcm',
+  expireAt: now - L.OFFLINE_GRACE_MS - 10000 });
+L.writeState(T3, { credential: longExpired });
+const stExp = L.getLicenseState(T3, { now });
+check('付费卡过期 → 带上 expiredCard 标记', Boolean(stExp.expiredCard), JSON.stringify(stExp.expiredCard));
+check('  且能报出是哪张卡', stExp.expiredCard && stExp.expiredCard.card === 'MCM-2026-0099', String(stExp.expiredCard && stExp.expiredCard.card));
+check('  文案区别于"体验结束"', stExp.message === '授权已到期', String(stExp.message));
+
 fs.rmSync(TMP, { recursive: true, force: true });
 fs.rmSync(T2, { recursive: true, force: true });
 fs.rmSync(T3, { recursive: true, force: true });

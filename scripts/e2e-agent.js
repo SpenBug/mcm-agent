@@ -11,7 +11,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const APP = path.join(process.env.APPDATA || '', '数模工坊');
+const APP = path.join(process.env.APPDATA || '', '阿一古数模');
 const cfgPath = path.join(APP, 'config.json');
 if (!fs.existsSync(cfgPath)) {
   console.error('✗ 找不到配置:', cfgPath);

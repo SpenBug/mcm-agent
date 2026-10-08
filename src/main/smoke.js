@@ -356,9 +356,14 @@ async function runSmokeBody(win, logs) {
       ['状态徽标已渲染', cmp.statuses.length === cmp.count],
       ['报名中的赛事有倒计时', cmp.hasCountdown === true],
       ['有「设为当前赛事」按钮', cmp.hasSetBtn === true],
-      ['今天默认当前赛事 = 数维杯', cmp.current === 'shuwei', String(cmp.current)],
+      // 2026-10-08：最近一场未开赛的是 MathorCup 大数据赛（10-23），比数维杯（11-20）更早
+      ['默认当前赛事 = 最近一场未开赛的', cmp.current === 'bigdata', String(cmp.current)],
       ['价目表带回（国赛 ¥69）', cmp.prices?.cumcm === 69, String(cmp.prices?.cumcm)],
       ['全能包 ¥168', cmp.prices?.all === 168, String(cmp.prices?.all)],
+      ['39 档统一（大数据/华数杯/亚太）',
+        cmp.prices?.bigdata === 39 && cmp.prices?.huashu === 39 && cmp.prices?.apmcm === 39,
+        `${cmp.prices?.bigdata}/${cmp.prices?.huashu}/${cmp.prices?.apmcm}`],
+      ['新赛事已上架（10 项）', cmp.count === 10, String(cmp.count)],
     ];
     let cmpPass = 0;
     for (const [name, ok, detail] of cmpChecks) {
@@ -366,6 +371,55 @@ async function runSmokeBody(win, logs) {
       if (ok) cmpPass += 1;
     }
     console.log(`赛事面板：${cmpPass}/${cmpChecks.length} 通过`);
+
+    // 品牌与邀请码：改名 / 马头图标 / 花字标语 / 邀请面板
+    const brandDom = await win.webContents.executeJavaScript(`
+      (async () => {
+        const inv = await window.mcm.invite.info();
+        const hero = document.querySelector('.es-slogan .sl-hero');
+        const lines = [...document.querySelectorAll('.es-slogan .sl-line')].map(n => n.textContent);
+        document.getElementById('btnInvite')?.click();
+        await new Promise(r => setTimeout(r, 600));
+        const panelOpen = document.getElementById('invPanel')?.classList.contains('open');
+        const codeShown = document.getElementById('invCode')?.textContent || '';
+        document.getElementById('invClose')?.click();
+        // 微信号不应再出现在界面上（用户要求只留二维码）
+        const bodyText = document.body.innerText || '';
+        return JSON.stringify({
+          title: document.title,
+          h1: document.querySelector('.brand-text h1')?.textContent,
+          hasHorse: !!document.querySelector('#brandMark path'),
+          hero: hero ? hero.textContent : '',
+          lines,
+          panelOpen,
+          codeShown,
+          inviteOk: inv.ok,
+          inviteCode: inv.code,
+          rules: inv.rules,
+          leakedWechat: /xhxc287/.test(bodyText),
+        });
+      })()
+    `);
+    console.log('===品牌与邀请码===');
+    console.log(brandDom);
+    const bd = JSON.parse(brandDom);
+    const bdChecks = [
+      ['窗口标题 = 阿一古数模', bd.title === '阿一古数模', bd.title],
+      ['顶栏品牌名 = 阿一古数模', bd.h1 === '阿一古数模', bd.h1],
+      ['马头图标已渲染', bd.hasHorse === true],
+      ['花字大字 = 他阿一古数模', bd.hero === '他阿一古数模', bd.hero],
+      ['花字前三行齐全', bd.lines.length === 3, bd.lines.join(' / ')],
+      ['邀请面板可打开', bd.panelOpen === true],
+      ['邀请接口可用', bd.inviteOk === true],
+      ['邀请规则带回（减 5 / 满 3）', bd.rules?.friendDiscount === 5 && bd.rules?.threshold === 3],
+      ['界面上不再出现微信号', bd.leakedWechat === false, bd.leakedWechat ? '仍有 xhxc287' : ''],
+    ];
+    let bdPass = 0;
+    for (const [name, ok, detail] of bdChecks) {
+      console.log(`${ok ? '✓' : '✗'} ${name}${detail ? `  [${detail}]` : ''}`);
+      if (ok) bdPass += 1;
+    }
+    console.log(`品牌与邀请码：${bdPass}/${bdChecks.length} 通过`);
 
     // 走完整 IPC 链路验证：配置 / 会话 / 工作区 / 技能 / 中止 / 连通性异常处理
     // ⚠️ 第 7 条要把 apiKey 清空才能测到守卫分支，所以先在主进程备份原值

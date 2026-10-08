@@ -265,12 +265,138 @@ function cmdList() {
   if (!rows.length) { console.log('  还没发过卡。'); return; }
   console.log('  共 ' + rows.length + ' 张');
   console.log('');
-  console.log('  卡号'.padEnd(16) + '赛事'.padEnd(12) + '到期'.padEnd(13) + '买家');
-  console.log('  ' + '-'.repeat(58));
+  console.log('  卡号'.padEnd(16) + '邀请码'.padEnd(10) + '赛事'.padEnd(12) + '到期'.padEnd(13) + '买家');
+  console.log('  ' + '-'.repeat(68));
   for (const r of rows) {
-    console.log('  ' + String(r.card).padEnd(14) + String(r.competition || 'all').padEnd(12)
+    const inv = comps.inviteCodeFromCard(r.card) || '-';
+    console.log('  ' + String(r.card).padEnd(14) + String(inv).padEnd(10)
+      + String(r.competition || 'all').padEnd(12)
       + String(r.expireAt || '').slice(0, 10).padEnd(13) + String(r.buyer || ''));
   }
+}
+
+// ------------------------------------------------------------- invite
+//
+// 邀请记账：**单独一个文件**，不混进卡密台账 ——
+// 台账列是固定的（卡密/机器码/赛事…），塞进推荐记录会把格式搞乱，
+// 而且推荐是"多次追加"的流水，和"一张卡一行"不是同一种东西。
+//
+// 邀请码 = 卡号后 6 位（与客户端 inviteCodeFromCard 同一套算法）。
+
+const INVITE_LEDGER = process.env.MCM_INVITE_LEDGER || path.join(__dirname, 'invites.csv');
+const INVITE_HEADER = 'inviterCode,buyer,competition,amount,at,note';
+
+function ensureInviteLedger() {
+  if (!fs.existsSync(INVITE_LEDGER)) {
+    fs.writeFileSync(INVITE_LEDGER, INVITE_HEADER + '\n', 'utf8');
+  }
+}
+
+function readInvites() {
+  ensureInviteLedger();
+  const lines = fs.readFileSync(INVITE_LEDGER, 'utf8').split(/\r?\n/).filter((l) => l.trim() && !l.startsWith('inviterCode,'));
+  const cols = INVITE_HEADER.split(',');
+  return lines.map((l) => {
+    const cells = splitCsvLine(l);
+    const o = {};
+    cols.forEach((c, i) => { o[c] = cells[i] ?? ''; });
+    return o;
+  });
+}
+
+/** 记录一次"某邀请码推荐成功" */
+function recordInvite({ inviterCode, buyer = '', competition = '', amount = '', note = '', now = Date.now() }) {
+  const code = String(inviterCode || '').trim();
+  if (!/^\d{6}$/.test(code)) {
+    throw new Error(`邀请码应为 6 位数字（卡号后 6 位），收到 "${inviterCode}"`);
+  }
+  ensureInviteLedger();
+  const esc = (v) => (/[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v));
+  fs.appendFileSync(INVITE_LEDGER,
+    [code, buyer, competition, amount, new Date(now).toISOString(), note].map(esc).join(',') + '\n', 'utf8');
+  return { code, count: countInvites(code) };
+}
+
+/** 某邀请码累计推荐次数 */
+function countInvites(code) {
+  return readInvites().filter((r) => r.inviterCode === String(code)).length;
+}
+
+/** 统计每个邀请码的推荐数，按次数降序 */
+function inviteStats() {
+  const map = new Map();
+  for (const r of readInvites()) {
+    const cur = map.get(r.inviterCode) || { code: r.inviterCode, count: 0, buyers: [] };
+    cur.count += 1;
+    if (r.buyer) cur.buyers.push(r.buyer);
+    map.set(r.inviterCode, cur);
+  }
+  return [...map.values()].sort((a, b) => b.count - a.count);
+}
+
+/** 邀请码 → 卡号/买家（用来告诉你是谁推荐的） */
+function whoIs(code) {
+  const hit = readLedgerObjects().find((r) => comps.inviteCodeFromCard(r.card) === String(code));
+  return hit || null;
+}
+
+function cmdInvite() {
+  const code = argv[1] && !argv[1].startsWith('--') ? argv[1] : arg('code');
+  if (!code) {
+    console.error('✗ 用法：node tools/issue.js invite <6位邀请码> [--buyer 张三] [--competition cumcm] [--amount 64] [--note 备注]');
+    process.exitCode = 2;
+    return;
+  }
+  try {
+    const r = recordInvite({
+      inviterCode: code,
+      buyer: arg('buyer', ''),
+      competition: arg('competition', ''),
+      amount: arg('amount', ''),
+      note: arg('note', ''),
+    });
+    const owner = whoIs(r.code);
+    const RULES = comps.INVITE_RULES;
+    console.log('');
+    console.log('  ✓ 已记录推荐：邀请码 ' + r.code);
+    if (owner) console.log('    推荐人卡号 ' + owner.card + (owner.buyer ? '（' + owner.buyer + '）' : ''));
+    if (!owner) console.log('    ⚠️ 台账里没找到持有该邀请码的卡 —— 确认一下码有没有抄错');
+    console.log('    该邀请码累计 ' + r.count + ' 人');
+    if (r.count >= RULES.threshold) {
+      console.log('');
+      console.log('  🎁 已满 ' + RULES.threshold + ' 人 —— 该送' + RULES.reward + '了！');
+      console.log('     记得给推荐人发一张免费卡（node tools/issue.js new ...）');
+    } else {
+      console.log('    还差 ' + (RULES.threshold - r.count) + ' 人可送' + RULES.reward);
+    }
+  } catch (e) {
+    console.error('✗ ' + e.message);
+    process.exitCode = 2;
+  }
+}
+
+function cmdInvites() {
+  const stats = inviteStats();
+  const RULES = comps.INVITE_RULES;
+  console.log('');
+  if (!stats.length) {
+    console.log('  还没有推荐记录。');
+    console.log('  用户购买后报出邀请码时，用 `node tools/issue.js invite <码> --buyer 张三` 记一笔。');
+    return;
+  }
+  console.log('  邀请码    推荐数   状态        推荐人');
+  console.log('  ' + '-'.repeat(60));
+  let due = 0;
+  for (const s of stats) {
+    const owner = whoIs(s.code);
+    const done = Math.floor(s.count / RULES.threshold);
+    const status = s.count >= RULES.threshold ? `🎁 可送 ${done} 次` : `差 ${RULES.threshold - s.count} 人`;
+    if (s.count >= RULES.threshold) due += done;
+    console.log('  ' + s.code.padEnd(10) + String(s.count).padEnd(9) + status.padEnd(12)
+      + (owner ? owner.card + (owner.buyer ? '（' + owner.buyer + '）' : '') : '⚠️ 台账无此码'));
+  }
+  console.log('');
+  if (due) console.log(`  ⚠️ 有 ${due} 次奖励待发放（满 ${RULES.threshold} 人送${RULES.reward}）`);
 }
 
 // -------------------------------------------------------------- usage
@@ -281,18 +407,28 @@ function usage() {
   node tools/issue.js new --machine <机器码> [选项]
       签发一张绑定指定机器的卡密
 
-      --machine  16 位机器码（带不带横杠都行）
-      --days     有效天数，默认 365
-      --until    指定到期日（如 2027-09-30），优先于 --days
-      --edition  版本标识，默认 pro
-      --buyer    买家备注，便于对账
-      --note     其他备注
+      --machine      16 位机器码（带不带横杠都行）
+      --competition  解锁赛事：all / cumcm / huawei / mcm / shuwei / apmcm /
+                     bigdata / huashu / huashu_intl / mathorcup / others
+                     不填 = all（全能包）
+      --days         有效天数，默认 365
+      --until        指定到期日（如 2027-09-30），优先于 --days
+      --edition      版本标识，默认 pro
+      --buyer        买家备注，便于对账
+      --note         其他备注
 
   node tools/issue.js verify <卡密>
       校验一张卡密（用客户端同一套验签逻辑，确保 exe 一定认）
 
   node tools/issue.js list
-      列出已签发的卡密
+      列出已签发的卡密（含每张卡对应的邀请码）
+
+  node tools/issue.js invite <6位邀请码> [--buyer 张三] [--competition cumcm] [--amount 64]
+      记录一次成功推荐（邀请码 = 卡号后 6 位，见 list）
+      满 ${comps.INVITE_RULES.threshold} 人会自动提醒你发奖励
+
+  node tools/issue.js invites
+      查看推荐统计与待发奖励
 
 ⚠️ 这个工具持有私钥，绝不能发给用户。
 `);
@@ -305,8 +441,14 @@ if (require.main === module) {
     case 'new': cmdNew(); break;
     case 'verify': cmdVerify(); break;
     case 'list': cmdList(); break;
+    case 'invite': cmdInvite(); break;
+    case 'invites': cmdInvites(); break;
     default: usage(); break;
   }
 }
 
-module.exports = { issue, sign, normalizeMachine, pretty, readLedger, LEDGER };
+module.exports = {
+  issue, sign, normalizeMachine, pretty, readLedger, LEDGER,
+  recordInvite, countInvites, inviteStats, whoIs,
+  INVITE_LEDGER,
+};

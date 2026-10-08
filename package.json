@@ -1,8 +1,8 @@
 {
   "name": "mcm-agent",
-  "productName": "数模工坊",
+  "productName": "阿一古数模",
   "version": "1.0.0",
-  "description": "数模工坊：三阶段建模流水线 + draw.io 竞赛模式出图，支持自填 API 与自选模型",
+  "description": "阿一古数模：三阶段建模流水线 + draw.io 竞赛模式出图，支持自填 API 与自选模型",
   "main": "src/main/index.js",
   "author": {
     "name": "SpenBug",
@@ -35,7 +35,7 @@
   },
   "build": {
     "appId": "com.spenbug.mcm-agent",
-    "productName": "数模工坊",
+    "productName": "阿一古数模",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -85,10 +85,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "数模工坊"
+      "shortcutName": "阿一古数模"
     },
     "portable": {
-      "artifactName": "数模工坊-便携版-${version}.exe"
+      "artifactName": "阿一古数模-便携版-${version}.exe"
     }
   },
   "dependencies": {

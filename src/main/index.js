@@ -67,7 +67,7 @@ function createWindow() {
     height: 940,
     minWidth: 1120,
     minHeight: 700,
-    title: '数模工坊',
+    title: '阿一古数模',
     // 窗口底色跟主题走 —— 写死旧色的话，切主题后会先闪一下别的颜色
     backgroundColor: readConfig().theme === 'light' ? '#f7f8fc' : '#070b18',
     autoHideMenuBar: true,
@@ -108,6 +108,15 @@ function createWindow() {
   if (process.argv.includes('--dev')) {
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   }
+}
+
+// ⚠️ userData 迁移**必须在 app ready 之前**执行 ——
+// ready 之后主进程已经按新路径读过 config/license，再改就晚了。
+// 老用户（数模工坊 → 阿一古数模）靠它保住卡密、设置与 Python 环境。
+try {
+  require('./paths').migrateLegacyUserData();
+} catch (err) {
+  console.error('[paths] 迁移失败（不影响启动）:', err.message);
 }
 
 app.whenReady().then(async () => {

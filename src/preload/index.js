@@ -78,4 +78,8 @@ contextBridge.exposeInMainWorld('mcm', {
   aiDeclare: {
     draft: (payload) => ipcRenderer.invoke('aiDeclare:draft', payload),
   },
+  // 邀请码（只读展示；减价与送卡由卖家人工确认）
+  invite: {
+    info: () => ipcRenderer.invoke('invite:info'),
+  },
 });

@@ -767,10 +767,19 @@
     ];
 
     div.innerHTML = `
+      <!-- 背景花字标语：装饰层，pointer-events:none 不挡交互。
+           前三行是淡的引子，"他阿一古数模"是渐变大字（视觉焦点）。 -->
+      <div class="es-slogan" aria-hidden="true">
+        <span class="sl-line">春风若有怜花意</span>
+        <span class="sl-line">可否许我再少年</span>
+        <span class="sl-line">但是...</span>
+        <span class="sl-hero">他阿一古数模</span>
+      </div>
+
       <div class="es-brand">
         <span class="es-mark"><svg viewBox="0 0 256 256" aria-hidden="true"><use href="#brandMark"/></svg></span>
         <div class="es-brand-txt">
-          <h2>数模工坊</h2>
+          <h2>阿一古数模</h2>
           <p class="es-lede">四类材料分别提交，剩下的我来。</p>
         </div>
       </div>
@@ -1539,6 +1548,8 @@
       if (r.ok) {
         toast('激活成功，感谢支持');
         await refreshLicense();
+        // 激活后才派生出邀请码（取自卡号）—— 不刷新的话侧栏还显示"激活后可见"
+        await refreshInvite();
         renderMessages();
       } else {
         err.textContent = r.error || '激活失败';
@@ -1761,6 +1772,106 @@
       } else {
         toast((r && r.error) || '生成失败', 'err');
       }
+    });
+  }
+
+  /* ================= 邀请码 =================
+   * 邀请码 = 卡号后 6 位，由主进程派生（invite:info）。
+   * ⚠️ 这里**不做本地计数、不做自动解锁** —— 纯离线应用统计不了
+   * "朋友用了我的码"，本地记数删个文件就重置了。所以界面只负责
+   * **显眼展示 + 一键复制**，减价与送卡由卖家在微信里确认发放。
+   */
+
+  let inviteInfo = null;
+
+  async function refreshInvite() {
+    try {
+      inviteInfo = await api.invite.info();
+    } catch {
+      inviteInfo = null;
+    }
+    // 侧栏入口上的码：没激活时显示占位
+    const el = $('sfInviteCode');
+    if (el) el.textContent = inviteInfo?.code || '激活后可见';
+    if ($('invCode')) renderInvitePanel();
+  }
+
+  function renderInvitePanel() {
+    const codeEl = $('invCode');
+    const rulesEl = $('invRules');
+    if (!codeEl || !inviteInfo) return;
+
+    const r = inviteInfo.rules || { friendDiscount: 5, threshold: 3, reward: '一期比赛的使用权' };
+    codeEl.textContent = inviteInfo.code || '激活后可见';
+
+    if (rulesEl) {
+      rulesEl.innerHTML = `
+        <div class="inv-rule">
+          <span class="ir-n">1</span>
+          <span>把邀请码发给同学，他购买时报这个码，<b>立减 ¥${r.friendDiscount}</b>。</span>
+        </div>
+        <div class="inv-rule">
+          <span class="ir-n">2</span>
+          <span>你每成功推荐 1 人记 1 次；累计满 <b>${r.threshold} 人</b>，送你 <b>${esc(r.reward)}</b>。</span>
+        </div>
+        <div class="inv-rule">
+          <span class="ir-n">3</span>
+          <span>推荐记录由客服核对后发放，<b>软件里不需要你操作什么</b>；
+                截图发给客服即可对账。</span>
+        </div>
+        ${inviteInfo.activated ? '' : `
+        <div class="inv-rule">
+          <span class="ir-n">!</span>
+          <span>你现在是体验版，<b>激活后才有专属邀请码</b>（邀请码取自你的卡号）。</span>
+        </div>`}
+      `;
+    }
+  }
+
+  function openInvite() {
+    $('invMask')?.classList.remove('hidden');
+    $('invPanel')?.classList.add('open');
+    refreshInvite();
+  }
+
+  function closeInvite() {
+    $('invMask')?.classList.add('hidden');
+    $('invPanel')?.classList.remove('open');
+  }
+
+  /** 复制文本，剪贴板被拒时退化成"选中提示" */
+  async function copyText(text, okMsg) {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast(okMsg || '已复制');
+    } catch {
+      toast('复制失败，请手动选中复制', 'err');
+    }
+  }
+
+  function bindInviteUI() {
+    $('btnInvite')?.addEventListener('click', openInvite);
+    $('invClose')?.addEventListener('click', closeInvite);
+    $('invMask')?.addEventListener('click', closeInvite);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && $('invPanel')?.classList.contains('open')) closeInvite();
+    });
+
+    $('invCopy')?.addEventListener('click', () => {
+      const code = inviteInfo?.code;
+      if (!code) { toast('激活后才有邀请码', 'err'); return; }
+      copyText(code, '邀请码已复制');
+    });
+
+    $('invCopyMsg')?.addEventListener('click', () => {
+      const code = inviteInfo?.code;
+      if (!code) { toast('激活后才有邀请码', 'err'); return; }
+      const r = inviteInfo.rules || { friendDiscount: 5 };
+      copyText(
+        `我在用「阿一古数模」做数模竞赛，从赛题到论文一条龙，代码在本机真跑。\n`
+        + `用我的邀请码 ${code} 购买可以立减 ¥${r.friendDiscount}，你省钱我也攒次数，谢啦～`,
+        '分享文案已复制'
+      );
     });
   }
 
@@ -2254,6 +2365,10 @@
     /* ---- 赛事日历 ---- */
     bindCompetitionUI();
     refreshCompetitions().catch((e) => console.error('[competitions] 刷新失败：', e));
+
+    /* ---- 邀请码 ---- */
+    bindInviteUI();
+    refreshInvite().catch((e) => console.error('[invite] 刷新失败：', e));
 
     /* ---- 命令面板（Ctrl+K）---- */
     $('btnCmdk')?.addEventListener('click', openCmdk);

@@ -107,6 +107,39 @@ function getUserDataDir() {
   return app.getPath('userData');
 }
 
+/**
+ * 品牌改名后的 userData 迁移（**必须在 app ready 之前调用一次**）。
+ *
+ * 背景：Electron 的 userData 路径默认由 productName 决定。
+ * 「数模工坊」→「阿一古数模」之后，路径从
+ *   %APPDATA%\数模工坊  →  %APPDATA%\阿一古数模
+ * 如果不处理，老用户升级后会发现：
+ *   - **卡密失效**（license.json 在旧目录）→ 要他重新激活，必被投诉
+ *   - 设置全丢（config.json 在旧目录）
+ *   - Python 环境要重装（python-env 在旧目录，几百 MB）
+ *
+ * 做法：新目录不存在、旧目录存在 → **直接把 userData 指回旧目录**（零拷贝）。
+ * 不复制文件的原因：python-env 有几百 MB，复制既慢又可能中途失败留下半套环境；
+ * 而且复制后两份环境会各自更新，反而更难维护。
+ *
+ * 新装用户（两个目录都没有）走新名，正常。
+ */
+function migrateLegacyUserData() {
+  try {
+    const current = app.getPath('userData');
+    if (path.basename(current) !== '阿一古数模') return;   // 用户自定义过路径 → 不动
+
+    const appData = app.getPath('appData');
+    const legacy = path.join(appData, '数模工坊');
+    if (fs.existsSync(current) || !fs.existsSync(legacy)) return;
+
+    app.setPath('userData', legacy);
+    console.log('[paths] 检测到旧版数据目录，继续沿用：' + legacy);
+  } catch (err) {
+    console.error('[paths] userData 迁移检查失败（不影响启动）:', err.message);
+  }
+}
+
 function getConfigPath() {
   return path.join(getUserDataDir(), 'config.json');
 }
@@ -116,9 +149,21 @@ function getPythonEnvDir() {
   return path.join(getUserDataDir(), 'python-env');
 }
 
-/** 默认工作区：文档/数模工坊工作区 */
+/**
+ * 默认工作区：文档/阿一古数模工作区
+ *
+ * ⚠️ **兼容旧名**：品牌从「数模工坊」改名为「阿一古数模」后，
+ * 老用户的成果还在 `数模工坊工作区` 里。如果新目录不存在、旧目录存在，
+ * 就继续用旧目录 —— 否则用户升级后会以为"工作区空了、我跑的题和论文全丢了"
+ * （其实没丢，只是程序换了个地方去找）。
+ * 用户主动选过工作区的话走 config.workspace，不受这里影响。
+ */
 function getDefaultWorkspace() {
-  return path.join(app.getPath('documents'), '数模工坊工作区');
+  const docs = app.getPath('documents');
+  const fresh = path.join(docs, '阿一古数模工作区');
+  const legacy = path.join(docs, '数模工坊工作区');
+  if (!fs.existsSync(fresh) && fs.existsSync(legacy)) return legacy;
+  return fresh;
 }
 
 function isDev() {
@@ -147,4 +192,5 @@ module.exports = {
   getDefaultWorkspace,
   getBrandDir,
   isDev,
+  migrateLegacyUserData,
 };

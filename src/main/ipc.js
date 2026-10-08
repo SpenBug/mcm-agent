@@ -282,6 +282,29 @@ function registerIpc(getWindow) {
   });
 
   /**
+   * 邀请码信息。
+   *
+   * 邀请码 = **卡号后 6 位**（见 competitions.inviteCodeFromCard）。
+   * 未激活（体验期）时没有卡号 → 返回 code: null，界面提示"激活后才有邀请码"。
+   *
+   * ⚠️ 这里**只读不写**：离线应用无法可靠统计"朋友用了我的码"，
+   * 所以不做本地计数（删个文件就绕过了）。减价与送卡由卖家在微信里确认，
+   * 软件只负责把码显眼地展示出来、方便用户截图分享。
+   */
+  ipcMain.handle('invite:info', () => {
+    const st = license.getLicenseState(getUserDataDir());
+    const card = st.mode === 'activated' ? st.card : null;
+    const code = card ? comps.inviteCodeFromCard(card) : null;
+    return {
+      ok: true,
+      code,
+      card: card || null,
+      activated: st.mode === 'activated',
+      rules: comps.INVITE_RULES,
+    };
+  });
+
+  /**
    * 生成《AI 工具使用详情》草稿（支撑材料用）。
    * 只写草稿到工作区 reports/ 下 —— 工具名称、用途、提示方式这些事实
    * 必须由用户按实际使用情况填，**不替他编造声明**（虚假声明要取消评奖资格）。
@@ -493,8 +516,10 @@ function registerIpc(getWindow) {
   /**
    * 用系统浏览器打开外链（赛事官网 / 报名入口）。
    *
-   * ⚠️ 只放行 https —— 否则渲染层一旦被注入，`file://` / `javascript:`
+   * ⚠️ 只放行 http/https —— 否则渲染层一旦被注入，`file://` / `javascript:`
    * 或本地可执行文件路径都能借这个通道被拉起来。
+   * 不强制 https：MathorCup 官网本身就只有 http（http://www.mathorcup.org），
+   * 强行要求 https 会让"官网"按钮点不动。
    */
   ipcMain.handle('openExternal', (_e, url) => {
     let u;
@@ -503,7 +528,9 @@ function registerIpc(getWindow) {
     } catch {
       return { ok: false, error: '链接格式不对' };
     }
-    if (u.protocol !== 'https:') return { ok: false, error: '只允许打开 https 链接' };
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') {
+      return { ok: false, error: '只允许打开 http/https 链接' };
+    }
     shell.openExternal(u.toString());
     return { ok: true };
   });

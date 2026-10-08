@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>数模工坊 · 卡密签发器</title>
+<title>阿一古数模 · 卡密签发器</title>
 <style>
   :root {
     --bg: #0b1120;
@@ -142,7 +142,7 @@
   <header>
     <div class="mark">∑</div>
     <div>
-      <h1>数模工坊 · 卡密签发器</h1>
+      <h1>阿一古数模 · 卡密签发器</h1>
       <p class="sub">私钥只在这台电脑的浏览器里，<b>不联网、不上传</b>。双击这个文件就能用。</p>
     </div>
   </header>
@@ -211,7 +211,7 @@
         </div>
         <div class="col">
           <label for="buyer">买家备注（会写进卡里，建议填）</label>
-          <input id="buyer" placeholder="张三 / 微信 xhxc287" autocomplete="off" />
+          <input id="buyer" placeholder="张三 / 微信" autocomplete="off" />
         </div>
       </div>
 
@@ -532,7 +532,7 @@ $('issue').addEventListener('click', async () => {
     $('copyMsg').addEventListener('click', () => copyText(
       '你的专属卡密（只认你这台电脑）：\n\n' + credential +
       '\n\n解锁赛事：' + compName +
-      '\n用法：打开数模工坊 → 顶部「赛事」面板选好要参加的赛事 → 把上面整段粘进激活框 → 点「解锁」。\n' +
+      '\n用法：打开阿一古数模 → 顶部「赛事」面板选好要参加的赛事 → 把上面整段粘进激活框 → 点「解锁」。\n' +
       '有效期到 ' + new Date(expireAt).toISOString().slice(0, 10) + '。\n' +
       '换电脑请找我重新签发。'
     ));
@@ -556,7 +556,7 @@ $('exportCsv').addEventListener('click', () => {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = '数模工坊-卡密台账-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.download = '阿一古数模-卡密台账-' + new Date().toISOString().slice(0, 10) + '.csv';
   a.click();
   URL.revokeObjectURL(a.href);
   flash('已导出');

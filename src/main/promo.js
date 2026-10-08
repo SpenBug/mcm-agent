@@ -26,7 +26,7 @@ const paths = require('./paths');
 
 const OUT_DIR = path.join(os.tmpdir(), 'mcm-promo-shots');
 // 演示工作区放个"像真的"的路径 —— 标题栏会显示它
-const WS = 'D:\\数模工坊演示\\2026国赛C题';
+const WS = 'D:\\阿一古数模演示\\2026国赛C题';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

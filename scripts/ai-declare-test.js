@@ -50,10 +50,10 @@ check('未提供内容 → 留【】占位符', /【/.test(draft));
 
 const filled = AI.buildDetailDraft({
   competition: 'cumcm',
-  tool: '数模工坊 v1.0.0',
+  tool: '阿一古数模 v1.0.0',
   purpose: '- 绘图代码调试',
 });
-check('提供了工具名 → 原样写入', filled.includes('数模工坊 v1.0.0'));
+check('提供了工具名 → 原样写入', filled.includes('阿一古数模 v1.0.0'));
 check('提供了用途 → 原样写入', filled.includes('绘图代码调试'));
 
 console.log();

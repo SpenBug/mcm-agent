@@ -108,7 +108,7 @@ function buildDetailDraft({ competition, tool, purpose, prompts, review, files }
   L.push('');
   L.push('## 一、所用 AI 工具名称、版本或型号');
   L.push('');
-  L.push(tool || '- 【填写工具名称与版本，例如：数模工坊 v1.0.0 / DeepSeek-V3】');
+  L.push(tool || '- 【填写工具名称与版本，例如：阿一古数模 v1.0.0 / DeepSeek-V3】');
   L.push('');
   L.push('## 二、具体使用目的和环节');
   L.push('');

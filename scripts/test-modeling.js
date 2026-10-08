@@ -31,7 +31,7 @@ function pickPython() {
   // ⚠️ 不要用 spawnSync 探测 —— 在受限环境里会 EBUSY，把所有候选都误判成不可用。
   // 直接看 app 自带环境在不在（它一定装了 matplotlib）。
   const appPy = path.join(
-    process.env.APPDATA || '', '数模工坊', 'python-env', 'Scripts', 'python.exe');
+    process.env.APPDATA || '', '阿一古数模', 'python-env', 'Scripts', 'python.exe');
   if (process.env.MCM_TEST_PYTHON) return process.env.MCM_TEST_PYTHON;
   if (fs.existsSync(appPy)) return appPy;
   return 'python';

@@ -16,4 +16,6 @@ resources/skills/math-modeling/references/Outstanding Thesis/**/*.pdf
 
 # 授权密钥 —— 私钥绝不能进仓库
 keys/
+# 销售记录（含买家信息）与邀请台账，绝不入库
 tools/issued.csv
+tools/invites.csv

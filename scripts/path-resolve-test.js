@@ -9,7 +9,7 @@ const { executeTool } = require('../src/main/agent/tools');
 
 const ROOT = path.join(os.tmpdir(), 'pathtest-' + Date.now());
 const WS = path.join(ROOT, '工作区');
-const SK = path.join(ROOT, '数模工坊', 'skills');
+const SK = path.join(ROOT, '阿一古数模', 'skills');
 
 // 造出技能库和工作区的真实文件
 fs.mkdirSync(path.join(SK, 'mcm-workflow'), { recursive: true });

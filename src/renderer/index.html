@@ -9,14 +9,16 @@
        connect-src 保持 'self'：渲染层不直接发网络请求，全部走 IPC 到主进程。 -->
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; font-src 'self' data:; frame-src 'self' data: blob: file:; object-src 'self' data: blob: file:;" />
-  <title>数模工坊</title>
+  <title>阿一古数模</title>
   <!-- 主题初始化必须在样式表之前，否则会闪一帧默认主题 -->
   <script src="theme.js"></script>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <!-- 品牌图标：只定义一次，顶栏 / 首屏 / JS 动态生成处都靠 <use> 引用。
-       ⚠️ 必须放在文档里（不能只塞进 defs 而不可达），<use> 是同文档引用。 -->
+       ⚠️ 必须放在文档里（不能只塞进 defs 而不可达），<use> 是同文档引用。
+       图形 = 侧面马头剪影（阿一古数模），路径与 src/main/icon.js 同源。
+       改动后请同步跑 python scripts/icon-geometry-check.py 验证几何。 -->
   <svg class="brand-defs" width="0" height="0" aria-hidden="true" focusable="false">
     <defs>
       <linearGradient id="lgBrand" x1="0.15" y1="0" x2="0.85" y2="1">
@@ -24,19 +26,25 @@
         <stop offset="52%" stop-color="#6366f1"/>
         <stop offset="100%" stop-color="#4338ca"/>
       </linearGradient>
-      <linearGradient id="lgBrandGloss" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#ffffff" stop-opacity=".28"/>
-        <stop offset="55%" stop-color="#ffffff" stop-opacity="0"/>
+      <linearGradient id="lgHorse" x1="0.2" y1="0" x2="0.8" y2="1">
+        <stop offset="0%" stop-color="#ffffff"/>
+        <stop offset="100%" stop-color="#dbe4ff"/>
       </linearGradient>
       <symbol id="brandMark" viewBox="0 0 256 256">
-        <path d="M128 20 L222 74 Q232 80 232 92 L232 164 Q232 176 222 182 L128 236 L34 182 Q24 176 24 164 L24 92 Q24 80 34 74 Z"
-              fill="url(#lgBrand)"/>
-        <path d="M128 20 L222 74 Q232 80 232 92 L232 130 Q128 152 24 130 L24 92 Q24 80 34 74 Z"
-              fill="url(#lgBrandGloss)"/>
-        <path d="M170 84 H100 Q94 84 94 90 Q94 95 98 99 L138 128 L98 157 Q94 161 94 166 Q94 172 100 172 H170"
-              fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="170" cy="84" r="11" fill="#22d3ee"/>
-        <circle cx="170" cy="172" r="11" fill="#22d3ee"/>
+        <!-- 圆角方底 -->
+        <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#lgBrand)"/>
+        <rect x="8" y="8" width="240" height="120" rx="56" fill="#ffffff" opacity=".10"/>
+        <!-- 马头剪影 -->
+        <path d="M152 26 C146 36 142 46 138 56 C130 62 122 68 114 76 C98 88 78 104 58 118
+                 C46 126 39 133 38 142 C37 152 45 160 57 164 C69 168 81 170 90 174
+                 C94 182 93 192 92 200 L96 216 L170 216 C176 200 178 182 176 162
+                 C172 136 166 110 160 92 C156 80 152 70 150 60 C152 48 152 36 152 26 Z"
+              fill="url(#lgHorse)"/>
+        <!-- 鬃毛流线 -->
+        <g fill="none" stroke="#4338ca" stroke-width="5" stroke-linecap="round" opacity=".45">
+          <path d="M160 92 C166 112 170 136 172 158"/>
+          <path d="M150 68 C156 84 160 102 162 120"/>
+        </g>
       </symbol>
     </defs>
   </svg>
@@ -47,7 +55,7 @@
       <div class="brand">
         <span class="logo"><svg viewBox="0 0 256 256" aria-hidden="true"><use href="#brandMark"/></svg></span>
         <div class="brand-text">
-          <h1>数模工坊</h1>
+          <h1>阿一古数模</h1>
           <p class="sub" id="wsPath" title="当前工作区">未设置工作区</p>
         </div>
       </div>
@@ -91,12 +99,16 @@
       </section>
 
       <!-- 版权与作者信息。防倒卖靠的是「一机一码」（倒卖的人卖出去别人也激活不了），
-           这里主要是品牌露出和溯源 —— 改了图就能去掉，所以不指望它拦住谁。 -->
+           这里主要是品牌露出和溯源 —— 改了图就能去掉，所以不指望它拦住谁。
+           ⚠️ 不写微信号（会被截图外传、也容易被搜到骚扰）；只留二维码弹窗。 -->
       <footer class="side-foot">
         <div class="sf-auth hidden" id="sideLicense"></div>
+        <button class="sf-invite" type="button" id="btnInvite" title="邀请同学，双方都有好处">
+          <span class="sfi-ico">🎁</span>
+          <span class="sfi-txt">邀请有礼<em id="sfInviteCode">······</em></span>
+        </button>
         <button class="sf-contact" type="button" id="btnContact" title="点开扫码加我">
           <div class="sf-line">使用问题 / 购买找</div>
-          <div class="sf-social">微信 <b>xhxc287</b></div>
           <div class="sf-social2">抖音 / 小红书 / B站 <b>@汉谟拉比法典</b></div>
           <div class="sf-tap">点这里扫码 →</div>
         </button>
@@ -112,7 +124,7 @@
         <div class="empty-state" id="emptyState">
           <div class="es-brand">
             <span class="es-mark"><svg viewBox="0 0 256 256" aria-hidden="true"><use href="#brandMark"/></svg></span>
-            <h2>数模工坊</h2>
+            <h2>阿一古数模</h2>
             <p class="es-lede">四类材料分别提交，剩下的我来。</p>
           </div>
           <div class="slots" id="slots"></div>
@@ -194,15 +206,15 @@
         </div>
 
         <div class="lock-sec">
-          <div class="lock-cap"><em>2</em>扫码加我微信</div>
+          <div class="lock-cap"><em>2</em>扫码加我</div>
           <div class="qr-pair">
             <figure class="qr-item">
-              <img class="lock-qr hidden" id="lockQrWechat" alt="微信二维码" />
-              <figcaption>加我，把机器码发过来</figcaption>
+              <img class="lock-qr hidden" id="lockQrWechat" alt="二维码" />
+              <figcaption>扫码加我，把机器码发过来</figcaption>
             </figure>
           </div>
           <p class="lock-hint">
-            微信号 <b>xhxc287</b>（也能直接搜这个号加我）<br />
+            长按或截图保存二维码，用微信扫码加我<br />
             付款和卡密都在微信里给你
           </p>
         </div>
@@ -238,6 +250,34 @@
       </div>
     </div>
 
+    <!-- 邀请码面板：我的邀请码 + 规则（显眼展示，方便截图分享） -->
+    <div class="inv-mask hidden" id="invMask"></div>
+    <div class="inv-panel" id="invPanel">
+      <div class="inv-head">
+        <div>
+          <h2>邀请有礼</h2>
+          <p class="inv-sub">把邀请码发给同学，他购买时立减 ¥5；你累计满 3 人，送一期比赛使用权。</p>
+        </div>
+        <button class="icon-btn" id="invClose" type="button">✕</button>
+      </div>
+
+      <div class="inv-code-box">
+        <div class="inv-code-cap">我的邀请码</div>
+        <div class="inv-code" id="invCode">······</div>
+        <div class="inv-code-acts">
+          <button class="btn primary" id="invCopy" type="button">复制邀请码</button>
+          <button class="btn ghost" id="invCopyMsg" type="button">复制分享文案</button>
+        </div>
+      </div>
+
+      <div class="inv-rules" id="invRules"></div>
+
+      <div class="inv-foot">
+        <p>⚠️ 邀请码在软件里只用于展示与分享 —— 减价和送卡都由客服在微信里确认后发放，
+           所以它不需要"攒够自动解锁"，也不会因为重装软件而失效。</p>
+      </div>
+    </div>
+
     <!-- 二维码弹窗：侧栏点联系方式时打开 -->
     <div class="qr-modal hidden" id="qrModal">
       <div class="qr-modal-mask" id="qrModalMask"></div>
@@ -246,8 +286,7 @@
           <span>联系我</span>
           <button class="icon-btn" type="button" id="qrModalClose">✕</button>
         </div>
-        <img class="qm-img hidden" id="qrModalImg" alt="微信二维码" />
-        <div class="qm-id">微信 <b>xhxc287</b></div>
+        <img class="qm-img hidden" id="qrModalImg" alt="二维码" />
         <div class="qm-social">抖音 / 小红书 / B站 @汉谟拉比法典</div>
         <div class="qm-hint">扫码加我，购买或使用问题都可以问</div>
       </div>

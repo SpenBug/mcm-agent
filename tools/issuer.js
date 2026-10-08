@@ -26,7 +26,7 @@ const HTML = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>数模工坊 · 卡密签发</title>
+<title>阿一古数模 · 卡密签发</title>
 <style>
   * { box-sizing: border-box; }
   body {

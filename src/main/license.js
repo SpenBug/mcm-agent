@@ -200,7 +200,10 @@ function verifyCredential(credential, machineCode, { now = Date.now() } = {}) {
   // 过期：给一段离线宽限期，避免断网/服务端故障时用户被直接锁在外面
   const expired = typeof payload.expireAt === 'number' && now > payload.expireAt;
   if (expired && now > payload.expireAt + OFFLINE_GRACE_MS) {
-    return { ok: false, expired: true, why: '授权已过期' };
+    // ⚠️ 这里必须把 payload 一起带回：调用方要靠 card 区分
+    // 「付费卡到期（该续期）」和「体验结束（该激活）」——
+    // 只回 ok:false 的话界面上只会说"体验已结束"，让买过的用户以为没买过。
+    return { ok: false, expired: true, payload, why: '授权已过期' };
   }
 
   return { ok: true, payload, expired, why: expired ? '已过期，宽限期内' : undefined };

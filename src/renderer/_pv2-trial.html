@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <!-- 预览页 -->
-  <title>数模工坊</title>
+  <title>阿一古数模</title>
   <!-- 主题初始化必须在样式表之前，否则会闪一帧默认主题 -->
   <script src="theme.js"></script>
   <link rel="stylesheet" href="styles.css" />
@@ -15,7 +15,7 @@
       <div class="brand">
         <span class="logo">∑</span>
         <div class="brand-text">
-          <h1>数模工坊</h1>
+          <h1>阿一古数模</h1>
           <p class="sub" id="wsPath" title="当前工作区">未设置工作区</p>
         </div>
       </div>
@@ -58,7 +58,6 @@
       <footer class="side-foot">
         <div class="sf-auth hidden" id="sideLicense"></div>
         <div class="sf-line">使用问题 / 购买找</div>
-        <div class="sf-social">微信 <b>xhxc287</b></div>
         <div class="sf-social2">抖音 / 小红书 / B站 <b>@汉谟拉比法典</b></div>
         <div class="sf-copy">© 2026 汉谟拉比法典 · 保留所有权利</div>
       </footer>
@@ -72,7 +71,7 @@
         <div class="empty-state" id="emptyState">
           <div class="es-brand">
             <span class="es-mark">∑</span>
-            <h2>数模工坊</h2>
+            <h2>阿一古数模</h2>
             <p class="es-lede">四类材料分别提交，剩下的我来。</p>
           </div>
           <div class="slots" id="slots"></div>
@@ -157,7 +156,7 @@
           <div class="lock-cap"><em>2</em>扫码付款</div>
           <img class="lock-qr" id="lockQr" alt="收款码" />
           <p class="lock-hint" id="lockQrHint">
-            付款后加微信 <b>xhxc287</b>，把上面那串机器码发过来
+            付款后扫码加我，把上面那串机器码发过来
           </p>
         </div>
 
@@ -183,9 +182,9 @@ window.__store = {
 };
 window.mcm = {
   config: { get: () => Promise.resolve({ config: { provider:'deepseek', model:'deepseek-chat',
-              workspace:'C:\\Users\\92182\\Documents\\数模工坊工作区', hasApiKey: true }, skillsRoot:'S' }),
+              workspace:'C:\\Users\\92182\\Documents\\阿一古数模工作区', hasApiKey: true }, skillsRoot:'S' }),
             save: rec('config.save'), test: rec('config.test') },
-  workspace: { ensure: () => Promise.resolve('C:\\Users\\92182\\Documents\\数模工坊工作区'),
+  workspace: { ensure: () => Promise.resolve('C:\\Users\\92182\\Documents\\阿一古数模工作区'),
                choose: () => Promise.resolve(null),
                list: () => Promise.resolve([{ name:'input', kind:'dir' }, { name:'code', kind:'dir' },
                  { name:'figures', kind:'dir' }, { name:'results', kind:'dir' }]),
