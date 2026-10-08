@@ -24,6 +24,7 @@
     "pack": "node scripts/build.js --dir",
     "dist": "node scripts/build.js",
     "verify:package": "node scripts/verify-package.js",
+    "verify:icon": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-exe-icon.ps1",
     "test:license": "node scripts/license-test.js",
     "test:competitions": "node scripts/competitions-test.js",
     "test:ai-declare": "node scripts/ai-declare-test.js",

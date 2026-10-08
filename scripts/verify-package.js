@@ -72,7 +72,60 @@ const brandDir = path.join(path.dirname(asarPath), 'brand');
 check('brand/wechat-qr.png 在', fs.existsSync(path.join(brandDir, 'wechat-qr.png')));
 check('brand/pay-qr.png 不在（打包排除）', !fs.existsSync(path.join(brandDir, 'pay-qr.png')));
 
-console.log(`\n结果：${pass}/${pass + fail} 通过`);
+/**
+ * ⑥ 包内**内容**核对。
+ *
+ * 上面几项只证明"文件进了包"，证明不了"进的是改过的那版"。
+ * 上一轮图标就是这么静默发出去的：文件在包里，内容却是旧的。
+ *
+ * ⚠️ extractFile 的路径形态：Windows 上 electron-builder 写进 asar 头的是反斜杠，
+ * 而且**不能带开头的分隔符** —— @electron/asar 按 path.sep 切段，
+ * 开头的 '\' 会切出空段导致查不到（listPackage 返回的却是带前导 \ 的）。
+ * 这里统一走 asarPath()，别再手写路径。
+ */
+console.log('\n=== ⑥ 包内内容 = 当前代码（防"进了包但是旧内容"）===');
+const { HORSE_PATH } = require('../src/main/brand-mark');
+const asarPath_ = (rel) => rel.replace(/\//g, path.sep);
+const read = (rel) => {
+  try {
+    return asar.extractFile(asarPath, asarPath_(rel)).toString('utf8');
+  } catch {
+    return null;
+  }
+};
+
+const html = read('src/renderer/index.html');
+check('index.html 可读', html !== null);
+if (html) {
+  check('界面用的是当前马头形状', html.includes(HORSE_PATH));
+  check('界面无旧马头路径', !html.includes('M152 26 C146 36'));
+  check('界面无旧 ∑ 图形', !/M170 84 H100/.test(html));
+  check('界面无旧品牌名「数模工坊」', !html.includes('数模工坊'));
+}
+
+const pathsJs = read('src/main/paths.js');
+check('paths.js 有迁移判定 shouldMigrate', pathsJs !== null && pathsJs.includes('function shouldMigrate'));
+check('paths.js 认 python-env（不让人重装环境）', pathsJs !== null && pathsJs.includes('hasPythonEnv'));
+check('paths.js 认试用锚点（不白送试用）', pathsJs !== null && pathsJs.includes('hasTrialAnchor'));
+
+const brandJs = read('src/main/brand-mark.js');
+check('brand-mark.js 进包（形状真源）', brandJs !== null && brandJs.includes('FAR_EAR_PATH'));
+
+const pkgJson = read('package.json');
+if (pkgJson) {
+  const j = JSON.parse(pkgJson);
+  const want = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  check(`版本与仓库一致（${want.version}）`, j.version === want.version, `包内 ${j.version}`);
+  check(`产品名 = ${want.productName}`, j.productName === want.productName, `包内 ${j.productName}`);
+}
+
+const compJs = read('src/main/competitions.js');
+if (compJs) {
+  check('赛事数据含大数据赛', compJs.includes('bigdata'));
+  check('赛事数据含华数杯', compJs.includes('huashubei') || compJs.includes('华数杯'));
+}
+
+console.log('\n结果：' + pass + '/' + (pass + fail) + ' 通过');
 process.exit(fail ? 1 : 0);
 
 function walkHas(dir, re) {
