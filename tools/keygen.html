@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>数模工坊 · 卡密签发器</title>
+<style>
+  :root {
+    --bg: #0b1120;
+    --panel: #131c31;
+    --panel-2: #0f1729;
+    --line: rgba(255,255,255,.10);
+    --line-strong: rgba(255,255,255,.18);
+    --text: #e6e9f2;
+    --soft: #9aa4bd;
+    --faint: #6b768f;
+    --brand: #6366f1;
+    --brand-hi: #818cf8;
+    --cyan: #22d3ee;
+    --ok: #34d399;
+    --warn: #fbbf24;
+    --danger: #f87171;
+    --mono: "Cascadia Mono", "JetBrains Mono", Consolas, "Courier New", monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 20px 60px;
+    background: var(--bg); color: var(--text);
+    font-family: "Microsoft YaHei UI", "Microsoft YaHei", system-ui, sans-serif;
+    font-size: 14px; line-height: 1.6;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+
+  header { display: flex; align-items: center; gap: 13px; margin-bottom: 6px; }
+  .mark {
+    width: 42px; height: 42px; flex: none; border-radius: 11px;
+    background: linear-gradient(150deg, #818cf8, #6366f1 52%, #4338ca);
+    display: grid; place-items: center;
+    font-size: 21px; font-weight: 700; color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.28);
+  }
+  h1 { margin: 0; font-size: 19px; font-weight: 650; letter-spacing: .3px; }
+  .sub { margin: 2px 0 0; font-size: 12.5px; color: var(--soft); }
+
+  .card {
+    margin-top: 20px; border: 1px solid var(--line); border-radius: 14px;
+    background: var(--panel); overflow: hidden;
+  }
+  .card > .hd {
+    display: flex; align-items: center; gap: 9px;
+    padding: 13px 18px; border-bottom: 1px solid var(--line);
+    background: var(--panel-2);
+  }
+  .hd em {
+    font-style: normal; width: 21px; height: 21px; flex: none;
+    border-radius: 6px; background: var(--brand); color: #fff;
+    font-size: 12px; font-weight: 700; display: grid; place-items: center;
+  }
+  .hd b { font-size: 14px; font-weight: 600; }
+  .hd .note { margin-left: auto; font-size: 11.5px; color: var(--faint); }
+  .card > .bd { padding: 16px 18px 18px; }
+
+  label { display: block; font-size: 12.5px; color: var(--soft); margin: 0 0 6px; }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > .col { flex: 1 1 190px; min-width: 0; }
+
+  input, textarea, select {
+    width: 100%; padding: 9px 11px;
+    border: 1px solid var(--line-strong); border-radius: 9px;
+    background: #0a101f; color: var(--text);
+    font-family: inherit; font-size: 13.5px; outline: none;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--brand-hi); }
+  textarea { font-family: var(--mono); font-size: 12px; line-height: 1.55; resize: vertical; }
+  input.mono { font-family: var(--mono); letter-spacing: 1.2px; }
+
+  .btn {
+    padding: 9px 17px; border: 1px solid var(--line-strong); border-radius: 9px;
+    background: transparent; color: var(--text);
+    font-family: inherit; font-size: 13.5px; cursor: pointer;
+    transition: background .15s, border-color .15s;
+  }
+  .btn:hover { background: rgba(255,255,255,.06); }
+  .btn.primary { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+  .btn.primary:hover { background: var(--brand-hi); }
+  .btn.primary:disabled { opacity: .45; cursor: not-allowed; background: var(--brand); }
+  .btn.sm { padding: 5px 11px; font-size: 12px; border-radius: 7px; }
+  .btn.danger { color: var(--danger); border-color: rgba(248,113,113,.35); }
+
+  .hint { margin: 8px 0 0; font-size: 11.5px; color: var(--faint); line-height: 1.7; }
+  .hint b { color: var(--soft); }
+  .hint code { font-family: var(--mono); font-size: 11px; color: var(--cyan); }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 999px; font-size: 11.5px;
+    border: 1px solid var(--line-strong); color: var(--soft);
+  }
+  .pill.ok { color: var(--ok); border-color: rgba(52,211,153,.4); background: rgba(52,211,153,.10); }
+  .pill.bad { color: var(--danger); border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.10); }
+
+  .out {
+    margin-top: 14px; padding: 13px 14px;
+    border: 1px solid rgba(52,211,153,.35); border-radius: 11px;
+    background: rgba(52,211,153,.07);
+  }
+  .out.bad { border-color: rgba(248,113,113,.4); background: rgba(248,113,113,.07); }
+  .out .ttl { font-size: 12.5px; color: var(--soft); margin-bottom: 7px; }
+  .cred {
+    margin: 0; padding: 11px 12px; border-radius: 9px;
+    background: #060b16; border: 1px solid var(--line);
+    font-family: var(--mono); font-size: 11.5px; line-height: 1.6;
+    word-break: break-all; white-space: pre-wrap; color: #cfe9ff;
+    max-height: 190px; overflow: auto;
+  }
+  .acts { display: flex; gap: 9px; margin-top: 11px; flex-wrap: wrap; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { padding: 8px 9px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { color: var(--faint); font-weight: 500; font-size: 11.5px; }
+  td.mono { font-family: var(--mono); font-size: 11.5px; }
+  tbody tr:hover { background: rgba(255,255,255,.03); }
+  .empty { padding: 18px 0; text-align: center; color: var(--faint); font-size: 12.5px; }
+
+  .warnbox {
+    margin-top: 10px; padding: 10px 12px; border-radius: 9px;
+    border: 1px solid rgba(251,191,36,.35); background: rgba(251,191,36,.08);
+    font-size: 12px; color: #fde68a; line-height: 1.7;
+  }
+  .flash {
+    position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+    padding: 9px 18px; border-radius: 999px; background: var(--brand);
+    color: #fff; font-size: 13px; opacity: 0; pointer-events: none;
+    transition: opacity .2s; z-index: 99;
+  }
+  .flash.on { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="mark">∑</div>
+    <div>
+      <h1>数模工坊 · 卡密签发器</h1>
+      <p class="sub">私钥只在这台电脑的浏览器里，<b>不联网、不上传</b>。双击这个文件就能用。</p>
+    </div>
+  </header>
+
+  <!-- ① 私钥 -->
+  <section class="card">
+    <div class="hd"><em>1</em><b>私钥</b><span class="note" id="keyState"></span></div>
+    <div class="bd">
+      <label for="priv">把 <code>keys/license-private.pem</code> 的内容整段粘进来（首次一次即可）</label>
+      <textarea id="priv" rows="4" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"></textarea>
+      <div class="acts">
+        <button class="btn primary" id="saveKey">保存私钥</button>
+        <button class="btn sm danger" id="clearKey">清除</button>
+      </div>
+      <div class="warnbox">
+        ⚠️ 私钥存在这个浏览器的 localStorage 里。<b>别在公用电脑上保存</b>；换电脑要重新粘贴一次。
+        私钥一旦泄露，别人就能无限发卡 —— 请另存两份离线备份。
+      </div>
+    </div>
+  </section>
+
+  <!-- ② 签发 -->
+  <section class="card">
+    <div class="hd"><em>2</em><b>签发一张卡</b></div>
+    <div class="bd">
+      <div class="row">
+        <div class="col" style="flex:1 1 260px">
+          <label for="machine">客户发来的机器码</label>
+          <input id="machine" class="mono" placeholder="7E84-2A70-F998-6EB7" autocomplete="off" />
+          <p class="hint" id="machineHint">带横杠、小写、带空格都行，会自动归一化。</p>
+        </div>
+        <div class="col" style="flex:0 1 130px">
+          <label for="edition">版本</label>
+          <select id="edition">
+            <option value="pro">pro（标准）</option>
+            <option value="enterprise">enterprise（企业）</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
+        <div class="col" style="flex:0 1 150px">
+          <label for="days">有效期（天）</label>
+          <input id="days" type="number" min="1" value="365" />
+        </div>
+        <div class="col" style="flex:0 1 190px">
+          <label for="until">或指定到期日</label>
+          <input id="until" type="date" />
+        </div>
+        <div class="col">
+          <label for="buyer">买家备注（会写进卡里，建议填）</label>
+          <input id="buyer" placeholder="张三 / 微信 xhxc287" autocomplete="off" />
+        </div>
+      </div>
+
+      <div class="acts" style="margin-top:15px">
+        <button class="btn primary" id="issue" disabled>生成卡密</button>
+        <span class="hint" style="margin:0;align-self:center">签发后会立刻用公钥自验一次</span>
+      </div>
+
+      <div id="outBox"></div>
+    </div>
+  </section>
+
+  <!-- ③ 台账 -->
+  <section class="card">
+    <div class="hd"><em>3</em><b>已签发台账</b><span class="note" id="ledgerNote"></span></div>
+    <div class="bd">
+      <div class="acts" style="margin:0 0 12px">
+        <button class="btn sm" id="exportCsv">导出 CSV</button>
+        <button class="btn sm danger" id="clearLedger">清空台账</button>
+      </div>
+      <div id="ledgerBox"></div>
+      <p class="hint">
+        台账存在浏览器本地。<b>导出 CSV 后请另存一份</b> —— 清了浏览器数据就没了。
+      </p>
+    </div>
+  </section>
+
+</div>
+<div class="flash" id="flash"></div>
+
+<script>
+'use strict';
+
+/* 客户端内嵌的公钥 —— 用来在签发后立刻自验。
+   如果换了密钥对，这里要同步更新（否则自验会报错）。 */
+const PUB_PEM = '-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAwI2vcYAMUpemxNUHfNOsssHDMfSFjEcwDnbSDklhCcU=\n-----END PUBLIC KEY-----';
+
+const LS_KEY = 'mcm.privkey';
+const LS_LEDGER = 'mcm.ledger';
+const LS_SEQ = 'mcm.seq';
+
+const $ = (id) => document.getElementById(id);
+
+/* ---------- 编码工具 ---------- */
+
+function bytesToB64url(bytes) {
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function strToB64url(str) {
+  return bytesToB64url(new TextEncoder().encode(str));
+}
+
+function b64ToBytes(b64) {
+  // ⚠️ atob 只认标准 base64（+ /），不认 base64url（- _）。
+  // 签名和 payload 都是 base64url 编的，不先转回来 atob 会直接抛
+  // "The string to be decoded is not correctly encoded"。
+  const s = String(b64).replace(/-/g, '+').replace(/_/g, '/');
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+function pemToDer(pem) {
+  const body = String(pem).replace(/-----[^-]+-----/g, '').replace(/\s+/g, '');
+  if (!body) throw new Error('私钥内容为空');
+  return b64ToBytes(body);
+}
+
+/* ---------- 机器码 ---------- */
+
+function normalizeMachine(s) {
+  return String(s || '').toUpperCase().replace(/[^0-9A-F]/g, '');
+}
+
+function pretty(m) {
+  return m.match(/.{1,4}/g).join('-');
+}
+
+/* ---------- 密钥 ---------- */
+
+async function importPrivateKey(pem) {
+  const der = pemToDer(pem);
+  return crypto.subtle.importKey('pkcs8', der, { name: 'Ed25519' }, false, ['sign']);
+}
+
+async function importPublicKey(pem) {
+  const der = pemToDer(pem);
+  return crypto.subtle.importKey('spki', der, { name: 'Ed25519' }, false, ['verify']);
+}
+
+/* ---------- 签发 ---------- */
+
+async function issueCard({ privKey, machine, edition, expireAt, buyer, card }) {
+  const issuedAt = Date.now();
+  // ⚠️ 字段顺序必须和 tools/issue.js 完全一致 ——
+  // JSON.stringify 按插入顺序输出，顺序变了签名字节就变了，客户端验不过。
+  const payload = { card, machine, edition, expireAt, issuedAt, buyer };
+
+  const body = strToB64url(JSON.stringify(payload));
+  const sig = await crypto.subtle.sign('Ed25519', privKey, new TextEncoder().encode(body));
+  return { credential: body + '.' + bytesToB64url(new Uint8Array(sig)), payload };
+}
+
+/** 用公钥验一遍 —— 签发后立刻确认这张卡客户端会认。 */
+async function verifyCard(credential, pubKey) {
+  const [body, sig] = String(credential).split('.');
+  if (!body || !sig) return { ok: false, why: '格式错误' };
+  const good = await crypto.subtle.verify(
+    'Ed25519', pubKey, b64ToBytes(sig), new TextEncoder().encode(body)
+  );
+  if (!good) return { ok: false, why: '签名不合法' };
+  return { ok: true, payload: JSON.parse(new TextDecoder().decode(b64ToBytes(body))) };
+}
+
+/* ---------- 台账 ---------- */
+
+function readLedger() {
+  try { return JSON.parse(localStorage.getItem(LS_LEDGER) || '[]'); } catch { return []; }
+}
+function writeLedger(list) {
+  localStorage.setItem(LS_LEDGER, JSON.stringify(list));
+  renderLedger();
+}
+function nextSeq() {
+  const n = Number(localStorage.getItem(LS_SEQ) || '0') + 1;
+  localStorage.setItem(LS_SEQ, String(n));
+  return n;
+}
+
+/* ---------- 界面 ---------- */
+
+function flash(msg) {
+  const el = $('flash');
+  el.textContent = msg;
+  el.classList.add('on');
+  clearTimeout(flash._t);
+  flash._t = setTimeout(() => el.classList.remove('on'), 1600);
+}
+
+async function copyText(txt) {
+  try {
+    await navigator.clipboard.writeText(txt);
+    flash('已复制');
+  } catch {
+    // 剪贴板被拒（file:// 有时会）—— 退回手动选中
+    const ta = document.createElement('textarea');
+    ta.value = txt;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    flash('已复制');
+  }
+}
+
+function renderKeyState(hasKey) {
+  const el = $('keyState');
+  el.innerHTML = hasKey
+    ? '<span class="pill ok">✓ 已保存</span>'
+    : '<span class="pill bad">未设置</span>';
+  $('issue').disabled = !hasKey;
+  if (hasKey) $('priv').value = '（已保存，如需更换请先点「清除」）';
+}
+
+function renderMachineHint() {
+  const raw = $('machine').value;
+  const norm = normalizeMachine(raw);
+  const el = $('machineHint');
+  if (!raw.trim()) {
+    el.innerHTML = '带横杠、小写、带空格都行，会自动归一化。';
+    return;
+  }
+  if (norm.length !== 16) {
+    el.innerHTML = '<span style="color:var(--danger)">归一化后 ' + norm.length + ' 位，应该是 16 位</span>';
+  } else {
+    el.innerHTML = '归一化 → <code>' + pretty(norm) + '</code> <span style="color:var(--ok)">✓</span>';
+  }
+}
+
+function renderLedger() {
+  const list = readLedger();
+  const box = $('ledgerBox');
+  $('ledgerNote').textContent = list.length ? list.length + ' 张' : '';
+
+  if (!list.length) {
+    box.innerHTML = '<div class="empty">还没有签过卡</div>';
+    return;
+  }
+
+  const rows = list.slice().reverse().map((r) => `
+    <tr>
+      <td class="mono">${r.card}</td>
+      <td class="mono">${pretty(r.machine)}</td>
+      <td>${r.edition}</td>
+      <td>${String(r.expireAt).slice(0, 10)}</td>
+      <td>${r.buyer ? escapeHtml(r.buyer) : '<span style="color:var(--faint)">—</span>'}</td>
+      <td><button class="btn sm" data-copy="${escapeAttr(r.credential)}">复制</button></td>
+    </tr>
+  `).join('');
+
+  box.innerHTML = `<table>
+    <thead><tr><th>卡号</th><th>机器码</th><th>版本</th><th>到期</th><th>买家</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  box.querySelectorAll('[data-copy]').forEach((b) => {
+    b.addEventListener('click', () => copyText(b.getAttribute('data-copy')));
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function escapeAttr(s) { return escapeHtml(s); }
+
+/* ---------- 事件 ---------- */
+
+$('saveKey').addEventListener('click', async () => {
+  const pem = $('priv').value.trim();
+  if (!pem.includes('PRIVATE KEY')) { flash('这不是一个私钥 PEM'); return; }
+  try {
+    await importPrivateKey(pem);          // 先试导入，导不进就不保存
+    localStorage.setItem(LS_KEY, pem);
+    renderKeyState(true);
+    flash('私钥已保存');
+  } catch (e) {
+    flash('导入失败：' + e.message);
+  }
+});
+
+$('clearKey').addEventListener('click', () => {
+  localStorage.removeItem(LS_KEY);
+  $('priv').value = '';
+  renderKeyState(false);
+  flash('已清除');
+});
+
+$('machine').addEventListener('input', renderMachineHint);
+
+$('issue').addEventListener('click', async () => {
+  const pem = localStorage.getItem(LS_KEY);
+  if (!pem) { flash('先设置私钥'); return; }
+
+  const machine = normalizeMachine($('machine').value);
+  if (machine.length !== 16) { flash('机器码应该是 16 位十六进制'); return; }
+
+  const until = $('until').value;
+  let expireAt;
+  if (until) {
+    expireAt = new Date(until + 'T23:59:59').getTime();
+    if (Number.isNaN(expireAt)) { flash('到期日格式不对'); return; }
+  } else {
+    const days = Number($('days').value);
+    if (!Number.isFinite(days) || days <= 0) { flash('天数要填正数'); return; }
+    expireAt = Date.now() + days * 86400000;
+  }
+
+  const seq = String(nextSeq()).padStart(4, '0');
+  const card = 'MCM-' + new Date().getFullYear() + '-' + seq;
+  const buyer = $('buyer').value.trim();
+
+  try {
+    const privKey = await importPrivateKey(pem);
+    const { credential, payload } = await issueCard({
+      privKey, machine, edition: $('edition').value, expireAt, buyer, card,
+    });
+
+    // 自验：签完立刻确认客户端会认
+    let selfCheck = '<span style="color:var(--faint)">自验跳过</span>';
+    try {
+      const pubKey = await importPublicKey(PUB_PEM);
+      const v = await verifyCard(credential, pubKey);
+      selfCheck = v.ok
+        ? '<span style="color:var(--ok)">✓ 自验通过</span>'
+        : '<span style="color:var(--danger)">✗ 自验失败：' + v.why + '</span>';
+    } catch (e) {
+      selfCheck = '<span style="color:var(--warn)">自验出错（公钥不匹配？）：' + e.message + '</span>';
+    }
+
+    const list = readLedger();
+    list.push({
+      card, machine, edition: payload.edition,
+      issuedAt: new Date(payload.issuedAt).toISOString(),
+      expireAt: new Date(payload.expireAt).toISOString(),
+      buyer, credential,
+    });
+    writeLedger(list);
+
+    const days = Math.round((expireAt - Date.now()) / 86400000);
+    $('outBox').innerHTML = `
+      <div class="out">
+        <div class="ttl">
+          ${card} · 授权给 <b>${buyer ? escapeHtml(buyer) : '（未填）'}</b> ·
+          ${new Date(expireAt).toISOString().slice(0, 10)} 到期（约 ${days} 天）· ${selfCheck}
+        </div>
+        <pre class="cred" id="credText">${escapeHtml(credential)}</pre>
+        <div class="acts">
+          <button class="btn primary" id="copyCred">复制卡密</button>
+          <button class="btn" id="copyMsg">复制「卡密 + 使用说明」</button>
+        </div>
+      </div>`;
+
+    $('copyCred').addEventListener('click', () => copyText(credential));
+    $('copyMsg').addEventListener('click', () => copyText(
+      '你的专属卡密（只认你这台电脑）：\n\n' + credential +
+      '\n\n用法：打开数模工坊 → 把上面整段粘进输入框 → 点「解锁」。\n' +
+      '有效期到 ' + new Date(expireAt).toISOString().slice(0, 10) + '。\n' +
+      '换电脑请找我重新签发。'
+    ));
+
+    flash('已生成');
+  } catch (e) {
+    $('outBox').innerHTML = '<div class="out bad"><div class="ttl">签发失败</div><pre class="cred">' +
+      escapeHtml(e.message) + '</pre></div>';
+  }
+});
+
+$('exportCsv').addEventListener('click', () => {
+  const list = readLedger();
+  if (!list.length) { flash('台账是空的'); return; }
+  const head = ['卡号', '机器码', '版本', '签发时间', '到期时间', '买家', '卡密'];
+  const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const csv = '\uFEFF' + [head.map(esc).join(',')]
+    .concat(list.map((r) => [r.card, r.machine, r.edition, r.issuedAt, r.expireAt, r.buyer, r.credential].map(esc).join(',')))
+    .join('\r\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '数模工坊-卡密台账-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  flash('已导出');
+});
+
+$('clearLedger').addEventListener('click', () => {
+  if (!readLedger().length) { flash('台账已经是空的'); return; }
+  if (!confirm('确定清空台账？\n\n已经发出去的卡密不受影响，但这份记录会没。\n建议先「导出 CSV」。')) return;
+  writeLedger([]);
+  flash('台账已清空');
+});
+
+/* ---------- 启动 ---------- */
+
+(async function boot() {
+  const has = !!localStorage.getItem(LS_KEY);
+  renderKeyState(has);
+  renderMachineHint();
+  renderLedger();
+
+  if (!window.crypto || !crypto.subtle) {
+    document.body.insertAdjacentHTML('afterbegin',
+      '<div class="warnbox">⚠️ 这个浏览器不支持 WebCrypto，签发器无法工作。请用 Chrome / Edge 打开。</div>');
+    return;
+  }
+  // 探测 Ed25519 支持（Chrome 137+ / Edge 137+）
+  try {
+    await crypto.subtle.importKey('pkcs8', pemToDer('-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC\n-----END PRIVATE KEY-----'),
+      { name: 'Ed25519' }, false, ['sign']);
+  } catch (e) {
+    document.body.insertAdjacentHTML('afterbegin',
+      '<div class="warnbox">⚠️ 这个浏览器不支持 Ed25519 签名（需要 Chrome / Edge 137 及以上）。' +
+      '请换新版浏览器打开。</div>');
+  }
+})();
+</script>
+</body>
+</html>

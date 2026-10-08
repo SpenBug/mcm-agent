@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="数模工坊">
+  <title>数模工坊</title>
+  <defs>
+    <!-- 主体渐变：左上偏亮 → 右下偏深，斜向 45°，比平涂有体积 -->
+    <linearGradient id="lgBody" x1="0.15" y1="0" x2="0.85" y2="1">
+      <stop offset="0%"   stop-color="#818cf8"/>
+      <stop offset="52%"  stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+    <!-- 顶部柔光：模拟顶光源打在台面上，上亮下透 -->
+    <linearGradient id="lgGloss" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"  stop-color="#ffffff" stop-opacity="0.28"/>
+      <stop offset="55%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 圆角六边形：工坊台面 -->
+  <path d="M128 20 L222 74 Q232 80 232 92 L232 164 Q232 176 222 182 L128 236 L34 182 Q24 176 24 164 L24 92 Q24 80 34 74 Z"
+        fill="url(#lgBody)"/>
+  <!-- 顶部高光层：只覆盖上半，下缘自然消隐 -->
+  <path d="M128 20 L222 74 Q232 80 232 92 L232 130 Q128 152 24 130 L24 92 Q24 80 34 74 Z"
+        fill="url(#lgGloss)"/>
+
+  <!-- ∑：数学。圆头折线，收笔处用两颗青点收束 -->
+  <path d="M170 84 H100 Q94 84 94 90 Q94 95 98 99 L138 128 L98 157 Q94 161 94 166 Q94 172 100 172 H170"
+        fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="170" cy="84"  r="11" fill="#22d3ee"/>
+  <circle cx="170" cy="172" r="11" fill="#22d3ee"/>
+</svg>

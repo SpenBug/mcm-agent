@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 480" width="480" height="480">
+  <rect width="480" height="480" fill="#ffffff"/>
+  <rect x="16" y="16" width="448" height="448" rx="20" fill="none" stroke="#c9ccd6" stroke-width="3" stroke-dasharray="14 10"/>
+
+  <text x="240" y="150" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="30" font-weight="600" fill="#3a3f52">收款码占位图</text>
+  <text x="240" y="192" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="19" fill="#7a8095">把这张换成你的真实收款码</text>
+
+  <g transform="translate(150,228)">
+    <rect x="0" y="0" width="52" height="52" rx="8" fill="#3a3f52"/>
+    <rect x="10" y="10" width="32" height="32" rx="4" fill="#ffffff"/>
+    <rect x="18" y="18" width="16" height="16" rx="2" fill="#3a3f52"/>
+
+    <rect x="128" y="0" width="52" height="52" rx="8" fill="#3a3f52"/>
+    <rect x="138" y="10" width="32" height="32" rx="4" fill="#ffffff"/>
+    <rect x="146" y="18" width="16" height="16" rx="2" fill="#3a3f52"/>
+
+    <rect x="0" y="128" width="52" height="52" rx="8" fill="#3a3f52"/>
+    <rect x="10" y="138" width="32" height="32" rx="4" fill="#ffffff"/>
+    <rect x="18" y="146" width="16" height="16" rx="2" fill="#3a3f52"/>
+
+    <g fill="#3a3f52">
+      <rect x="70" y="0" width="12" height="12" rx="2"/><rect x="94" y="0" width="12" height="12" rx="2"/>
+      <rect x="70" y="24" width="12" height="12" rx="2"/><rect x="94" y="40" width="12" height="12" rx="2"/>
+      <rect x="70" y="70" width="12" height="12" rx="2"/><rect x="94" y="70" width="12" height="12" rx="2"/>
+      <rect x="118" y="70" width="12" height="12" rx="2"/><rect x="142" y="70" width="12" height="12" rx="2"/>
+      <rect x="166" y="70" width="12" height="12" rx="2"/>
+      <rect x="70" y="94" width="12" height="12" rx="2"/><rect x="118" y="94" width="12" height="12" rx="2"/>
+      <rect x="142" y="94" width="12" height="12" rx="2"/>
+      <rect x="70" y="118" width="12" height="12" rx="2"/><rect x="94" y="118" width="12" height="12" rx="2"/>
+      <rect x="142" y="118" width="12" height="12" rx="2"/><rect x="166" y="118" width="12" height="12" rx="2"/>
+      <rect x="70" y="142" width="12" height="12" rx="2"/><rect x="118" y="142" width="12" height="12" rx="2"/>
+      <rect x="166" y="142" width="12" height="12" rx="2"/>
+      <rect x="70" y="166" width="12" height="12" rx="2"/><rect x="94" y="166" width="12" height="12" rx="2"/>
+      <rect x="142" y="166" width="12" height="12" rx="2"/>
+    </g>
+  </g>
+
+  <text x="240" y="452" text-anchor="middle" font-family="Microsoft YaHei, sans-serif" font-size="17" fill="#b0392f">⚠ 这是占位图，发布前必须替换</text>
+</svg>
