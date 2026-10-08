@@ -232,6 +232,86 @@ function writeState(userData, patch) {
 }
 
 // ===========================================================================
+// 三·B、试用锚点 —— 绑机器码，存 machine.json（删 license.json 不再重置）
+// ===========================================================================
+//
+// 以前锚点只在 license.json：删掉这个文件 = 全新 2 小时，试用可无限续。
+// 现在锚点主存 machine.json 并绑定机器码（trialMachine）：
+//   - 删 license.json   → 不重置（machine.json 里还有）
+//   - 拷到别的机器      → 机器码对不上 → 按新机器处理
+//   - license.json 只是镜像 + 兼容旧用户的迁移入口
+// 注意：把两个文件都删掉仍会重置 —— 本地纯离线方案做不到防"删光全部本地状态"，
+// 那属于需要联网账号体系才能解决的范畴（见设计文档「风险与待确认项」）。
+
+function readMachineFile(userData) {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(userData, 'machine.json'), 'utf8'));
+    return j && typeof j === 'object' ? j : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 合并写 machine.json（保留既有 code/parts/degraded 与试用字段） */
+function patchMachineFile(userData, patch) {
+  try {
+    fs.mkdirSync(userData, { recursive: true });
+    const f = path.join(userData, 'machine.json');
+    let cur = {};
+    try { cur = JSON.parse(fs.readFileSync(f, 'utf8')) || {}; } catch { /* 新建 */ }
+    fs.writeFileSync(f, JSON.stringify({ ...cur, ...patch }, null, 2), 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 读试用锚点。优先级：machine.json（机器码匹配）→ license.json 旧字段（迁移）。
+ * @returns {{firstRunAt:number, lastSeenAt:number}|null}
+ */
+function readAnchor(userData, machineCode) {
+  const m = readMachineFile(userData);
+  if (
+    typeof m.trialFirstRunAt === 'number' &&
+    m.trialMachine === machineCode
+  ) {
+    return {
+      firstRunAt: m.trialFirstRunAt,
+      lastSeenAt: typeof m.trialLastSeenAt === 'number' ? m.trialLastSeenAt : m.trialFirstRunAt,
+    };
+  }
+
+  // 旧版本迁移：license.json 里有锚点但没绑机器码 → 现在补绑。
+  // 已经绑过但机器码对不上（换机/拷贝）→ 不认，按新机器重新计时。
+  const st = readState(userData);
+  const legacyMachineUsable = st.trialMachine === undefined || st.trialMachine === machineCode;
+  if (typeof st.trialFirstRunAt === 'number' && legacyMachineUsable) {
+    const anchor = {
+      firstRunAt: st.trialFirstRunAt,
+      lastSeenAt: typeof st.trialLastSeenAt === 'number' ? st.trialLastSeenAt : st.trialFirstRunAt,
+    };
+    writeAnchor(userData, anchor, machineCode);
+    return anchor;
+  }
+  return null;
+}
+
+/** 写锚点：machine.json（主）+ license.json（镜像，保持旧读取方不炸） */
+function writeAnchor(userData, anchor, machineCode) {
+  patchMachineFile(userData, {
+    trialFirstRunAt: anchor.firstRunAt,
+    trialLastSeenAt: anchor.lastSeenAt,
+    trialMachine: machineCode,
+  });
+  writeState(userData, {
+    trialFirstRunAt: anchor.firstRunAt,
+    trialLastSeenAt: anchor.lastSeenAt,
+    trialMachine: machineCode,
+  });
+}
+
+// ===========================================================================
 // 四、体验版
 // ===========================================================================
 
@@ -240,20 +320,24 @@ function writeState(userData, patch) {
  *
  * ⚠️ lastSeenAt **只增不减** —— 用户把系统时间调回去，剩余时间不会变多。
  * 反过来把时间往未来调，会加速到期（对他自己不利，没人会这么干）。
+ *
+ * 锚点存 machine.json 并绑定机器码（见 readAnchor）：
+ * 删 license.json 不会重置试用；拷到别的机器按新机器重新计时。
  */
 function touchTrial(userData, { now = Date.now(), autoStart = true } = {}) {
-  const st = readState(userData);
-  let firstRunAt = st.trialFirstRunAt;
-  if (!firstRunAt) {
+  const machine = getMachineCode(userData);
+  let anchor = readAnchor(userData, machine.code);
+  if (!anchor) {
     if (!autoStart) return { started: false, remainingMs: TRIAL_MS, expired: false };
-    firstRunAt = now;
+    anchor = { firstRunAt: now, lastSeenAt: now };
   }
-  const lastSeenAt = Math.max(st.trialLastSeenAt || 0, now);
-  writeState(userData, { trialFirstRunAt: firstRunAt, trialLastSeenAt: lastSeenAt });
+  const lastSeenAt = Math.max(anchor.lastSeenAt, now);
+  anchor = { firstRunAt: anchor.firstRunAt, lastSeenAt };
+  writeAnchor(userData, anchor, machine.code);
 
-  const elapsed = Math.max(now, lastSeenAt) - firstRunAt;
+  const elapsed = Math.max(now, lastSeenAt) - anchor.firstRunAt;
   const remainingMs = Math.max(0, TRIAL_MS - elapsed);
-  return { started: true, firstRunAt, remainingMs, expired: remainingMs <= 0 };
+  return { started: true, firstRunAt: anchor.firstRunAt, remainingMs, expired: remainingMs <= 0 };
 }
 
 /** 格式化成「还剩 5 小时 12 分」 */
@@ -278,6 +362,7 @@ function getLicenseState(userData, { now = Date.now() } = {}) {
   const machine = getMachineCode(userData);
 
   // ① 有授权凭证？验签 + 查机器绑定 + 查过期
+  let expiredCard = null;   // 凭证本身有效但已过宽限期 → 用于区分"卡到期"与"体验结束"
   if (st.credential) {
     const v = verifyCredential(st.credential, machine.code, { now });
     if (v.ok) {
@@ -287,14 +372,17 @@ function getLicenseState(userData, { now = Date.now() } = {}) {
         machineDegraded: machine.degraded,
         card: v.payload.card,
         edition: v.payload.edition || 'pro',
+        // 本卡解锁的赛事（旧卡无此字段 → all，兼容已售出的卡）
+        competition: v.payload.competition || 'all',
         expireAt: v.payload.expireAt,
         needsRefresh: !!v.expired,      // 过期但还在宽限期 → 该联网复验了
         message: v.expired ? '授权待刷新（宽限期内）' : undefined,
       };
     }
-    // 凭证坏了（换机 / 被篡改）→ 落到体验版或过期
+    // 签名/机器都对、单纯是过期太久 → 记下来，好在锁定页说"该续期"而不是"没激活"
+    if (v.expired && v.payload && v.payload.card) expiredCard = v.payload;
+    // 其余情况（换机 / 被篡改）→ 落到体验版或过期
   }
-
   // ② 没有有效凭证 → 看体验版
   const trial = touchTrial(userData, { now });
   if (!trial.expired) {
@@ -307,12 +395,17 @@ function getLicenseState(userData, { now = Date.now() } = {}) {
     };
   }
 
-  // ③ 体验版也用完了
+  // ③ 体验版也用完了（锚点存在 = 用过体验版；没有 = 从未开始）
   return {
-    mode: st.trialFirstRunAt ? 'expired' : 'none',
+    mode: trial.started ? 'expired' : 'none',
     machine: machine.code,
     machineDegraded: machine.degraded,
-    message: st.trialFirstRunAt ? '体验期已结束' : '未激活',
+    // 卡到期 vs 体验结束：锁定页文案要分开（前者该"续期"，后者该"激活"）
+    expiredCard: expiredCard ? { card: expiredCard.card, expireAt: expiredCard.expireAt } : null,
+    card: expiredCard ? expiredCard.card : undefined,
+    message: expiredCard
+      ? '授权已到期'
+      : (trial.started ? '体验期已结束' : '未激活'),
   };
 }
 

@@ -184,6 +184,23 @@
       </div>
 
       <div class="row" style="margin-top:12px">
+        <div class="col" style="flex:1 1 300px">
+          <label for="competition">解锁赛事（决定售价与可用范围）</label>
+          <select id="competition">
+            <option value="all">全能包 —— 解锁全部赛事（¥168）</option>
+            <option value="shuwei">数维杯秋季赛（¥39）</option>
+            <option value="cumcm">国赛 CUMCM 高教社杯（¥69）</option>
+            <option value="huawei">华为杯研究生赛（¥79）</option>
+            <option value="mcm">美赛 MCM/ICM（¥79）</option>
+            <option value="apmcm">亚太赛 APMCM（¥49）</option>
+            <option value="mathorcup">MathorCup（¥29）</option>
+            <option value="others">其他小赛（¥29）</option>
+          </select>
+          <p class="hint">用户买哪个赛事就选哪个；选了之后他只能在那个赛事模式下用。</p>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px">
         <div class="col" style="flex:0 1 150px">
           <label for="days">有效期（天）</label>
           <input id="days" type="number" min="1" value="365" />
@@ -291,11 +308,12 @@ async function importPublicKey(pem) {
 
 /* ---------- 签发 ---------- */
 
-async function issueCard({ privKey, machine, edition, expireAt, buyer, card }) {
+async function issueCard({ privKey, machine, edition, competition, expireAt, buyer, card }) {
   const issuedAt = Date.now();
   // ⚠️ 字段顺序必须和 tools/issue.js 完全一致 ——
   // JSON.stringify 按插入顺序输出，顺序变了签名字节就变了，客户端验不过。
-  const payload = { card, machine, edition, expireAt, issuedAt, buyer };
+  // 顺序：card, machine, edition, competition, expireAt, issuedAt, buyer
+  const payload = { card, machine, edition, competition, expireAt, issuedAt, buyer };
 
   const body = strToB64url(JSON.stringify(payload));
   const sig = await crypto.subtle.sign('Ed25519', privKey, new TextEncoder().encode(body));
@@ -392,6 +410,7 @@ function renderLedger() {
     <tr>
       <td class="mono">${r.card}</td>
       <td class="mono">${pretty(r.machine)}</td>
+      <td>${r.competition || 'all'}</td>
       <td>${r.edition}</td>
       <td>${String(r.expireAt).slice(0, 10)}</td>
       <td>${r.buyer ? escapeHtml(r.buyer) : '<span style="color:var(--faint)">—</span>'}</td>
@@ -400,7 +419,7 @@ function renderLedger() {
   `).join('');
 
   box.innerHTML = `<table>
-    <thead><tr><th>卡号</th><th>机器码</th><th>版本</th><th>到期</th><th>买家</th><th></th></tr></thead>
+    <thead><tr><th>卡号</th><th>机器码</th><th>赛事</th><th>版本</th><th>到期</th><th>买家</th><th></th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 
@@ -463,8 +482,9 @@ $('issue').addEventListener('click', async () => {
 
   try {
     const privKey = await importPrivateKey(pem);
+    const competition = $('competition').value;
     const { credential, payload } = await issueCard({
-      privKey, machine, edition: $('edition').value, expireAt, buyer, card,
+      privKey, machine, edition: $('edition').value, competition, expireAt, buyer, card,
     });
 
     // 自验：签完立刻确认客户端会认
@@ -481,7 +501,7 @@ $('issue').addEventListener('click', async () => {
 
     const list = readLedger();
     list.push({
-      card, machine, edition: payload.edition,
+      card, machine, edition: payload.edition, competition: payload.competition,
       issuedAt: new Date(payload.issuedAt).toISOString(),
       expireAt: new Date(payload.expireAt).toISOString(),
       buyer, credential,
@@ -489,10 +509,16 @@ $('issue').addEventListener('click', async () => {
     writeLedger(list);
 
     const days = Math.round((expireAt - Date.now()) / 86400000);
+    const COMP_NAMES = {
+      all: '全能包（全部赛事）', shuwei: '数维杯秋季赛', cumcm: '国赛 CUMCM',
+      huawei: '华为杯研究生赛', mcm: '美赛 MCM/ICM', apmcm: '亚太赛 APMCM',
+      mathorcup: 'MathorCup', others: '其他小赛',
+    };
+    const compName = COMP_NAMES[competition] || competition;
     $('outBox').innerHTML = `
       <div class="out">
         <div class="ttl">
-          ${card} · 授权给 <b>${buyer ? escapeHtml(buyer) : '（未填）'}</b> ·
+          ${card} · <b>${escapeHtml(compName)}</b> · 授权给 <b>${buyer ? escapeHtml(buyer) : '（未填）'}</b> ·
           ${new Date(expireAt).toISOString().slice(0, 10)} 到期（约 ${days} 天）· ${selfCheck}
         </div>
         <pre class="cred" id="credText">${escapeHtml(credential)}</pre>
@@ -505,7 +531,8 @@ $('issue').addEventListener('click', async () => {
     $('copyCred').addEventListener('click', () => copyText(credential));
     $('copyMsg').addEventListener('click', () => copyText(
       '你的专属卡密（只认你这台电脑）：\n\n' + credential +
-      '\n\n用法：打开数模工坊 → 把上面整段粘进输入框 → 点「解锁」。\n' +
+      '\n\n解锁赛事：' + compName +
+      '\n用法：打开数模工坊 → 顶部「赛事」面板选好要参加的赛事 → 把上面整段粘进激活框 → 点「解锁」。\n' +
       '有效期到 ' + new Date(expireAt).toISOString().slice(0, 10) + '。\n' +
       '换电脑请找我重新签发。'
     ));
@@ -520,10 +547,10 @@ $('issue').addEventListener('click', async () => {
 $('exportCsv').addEventListener('click', () => {
   const list = readLedger();
   if (!list.length) { flash('台账是空的'); return; }
-  const head = ['卡号', '机器码', '版本', '签发时间', '到期时间', '买家', '卡密'];
+  const head = ['卡号', '机器码', '赛事', '版本', '签发时间', '到期时间', '买家', '卡密'];
   const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
   const csv = '\uFEFF' + [head.map(esc).join(',')]
-    .concat(list.map((r) => [r.card, r.machine, r.edition, r.issuedAt, r.expireAt, r.buyer, r.credential].map(esc).join(',')))
+    .concat(list.map((r) => [r.card, r.machine, r.competition || 'all', r.edition, r.issuedAt, r.expireAt, r.buyer, r.credential].map(esc).join(',')))
     .join('\r\n');
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });

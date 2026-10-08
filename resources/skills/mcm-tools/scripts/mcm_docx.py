@@ -337,6 +337,38 @@ def cmd_build(args):
                 h.alignment = 1
         _add_blocks(doc, sec.get("blocks", []), stats)
 
+    # AI 工具使用声明 —— **必须排在参考文献之前**。
+    # 依据：全国大学生数学建模竞赛《人工智能工具使用规定（2026 年试行）》第 3 条：
+    # 「参赛队应在论文参考文献之前设置"AI工具使用声明"」。
+    # 位置写错（比如放文末）等于不符合规定，可能被按违规处理。
+    ai = spec.get("ai_declaration")
+    if ai:
+        h = doc.add_heading("", level=1)
+        r = h.add_run("AI 工具使用声明")
+        set_run_font(r, CN_HEAD, 14, bold=True)
+        h.alignment = 1
+        if ai.get("used") is False:
+            # 未使用 AI：规定给了固定句式，照抄即可
+            p = doc.add_paragraph()
+            rr = p.add_run("本参赛队在竞赛过程中未使用任何 AI 工具。")
+            set_run_font(rr, CN_BODY, 12)
+            p.paragraph_format.first_line_indent = 24
+        else:
+            purpose = ai.get("purpose") or "语言润色、代码调试等"
+            p = doc.add_paragraph()
+            rr = p.add_run(
+                "本参赛队在竞赛过程中使用了 AI 工具，主要用于【%s】，"
+                "详细使用情况见支撑材料。" % purpose
+            )
+            set_run_font(rr, CN_BODY, 12)
+            p.paragraph_format.first_line_indent = 24
+            # 使用详情（名称/版本、环节、提示方式、人工核验）—— 规定第 4 条要求
+            for item in ai.get("details") or []:
+                pp = doc.add_paragraph()
+                rr = pp.add_run("· " + item)
+                set_run_font(rr, CN_BODY, 12)
+                pp.paragraph_format.left_indent = 24
+
     # 参考文献
     refs = spec.get("references") or []
     if refs:
@@ -400,6 +432,21 @@ def cmd_check(args):
     # 4) 参考文献存在性
     if "参考文献" not in text:
         problems.append("没有找到「参考文献」章节")
+
+    # 5) AI 工具使用声明（国赛 2026 起强制，且**必须排在参考文献之前**）
+    ai_idx = text.find("AI 工具使用声明")
+    if ai_idx < 0:
+        ai_idx = text.find("AI工具使用声明")
+    ref_idx = text.find("参考文献")
+    if ai_idx < 0:
+        problems.append("缺少「AI 工具使用声明」章节（国赛 2026 规定：须在参考文献之前声明）")
+    elif ref_idx >= 0 and ai_idx > ref_idx:
+        problems.append("「AI 工具使用声明」排在参考文献之后 —— 规定要求在参考文献**之前**")
+    else:
+        # 声明里不能留着模板占位符，那等于没填
+        seg = text[ai_idx:ref_idx if ref_idx > ai_idx else ai_idx + 400]
+        if "【" in seg and "】" in seg:
+            problems.append("「AI 工具使用声明」里还有未填写的【用途】占位符")
 
     print("产出检查 · %s" % args.path)
     print("  段落 %d · 表格 %d · 内嵌图 %d" % (len(doc.paragraphs), len(doc.tables), n_pics))

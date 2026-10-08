@@ -29,6 +29,7 @@ const DEFAULT_CONFIG = {
   pythonPath: '',
   lastProject: '',
   theme: 'dark',      // 由渲染进程写入，主进程用它决定窗口底色（避免启动闪色）
+  currentCompetition: '',   // 当前赛事 id（'' = 自动取最近一场报名中的赛事）
 };
 
 let cache = null;

@@ -34,9 +34,15 @@ description: 数模工坊的工具链（自有实现）。读赛题 PDF / 规范
 脚本都可**直接命令行调用**，也可 import：
 
 ```bash
-python skills/mcm-tools/scripts/mcm_io.py pdf input/赛题.pdf --pages 1-3
-python skills/mcm-tools/scripts/mcm_io.py xlsx input/附件1.xlsx --head 10
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" pdf input/赛题.pdf --pages 1-3
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" xlsx input/附件1.xlsx --head 10
 ```
+
+> ⚠️ **`%MCM_SKILL_ROOT%` 由应用注入**（指向只读技能库的绝对路径）。
+> 本目录所有文档的示例都这么写，**照抄即可** —— 它在 `run_command` 里会被
+> 展开成真实绝对路径。**不要**改写成 `skills/...`：shell 的 cwd 是工作区，
+> `skills/...` 会解析到工作区里，必然报「文件不存在」。
+> 用 `read_file` / `list_files` 读技能文件时才用 `skills/` 前缀（虚拟根）。
 
 ---
 

@@ -1,9 +1,9 @@
 # 读 PDF（赛题 / 规范）
 
 ```bash
-python skills/mcm-tools/scripts/mcm_io.py pdf input/赛题.pdf
-python skills/mcm-tools/scripts/mcm_io.py pdf input/格式规范.pdf --pages 1-4
-python skills/mcm-tools/scripts/mcm_io.py pdf input/赛题.pdf --pages 2 --json
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" pdf input/赛题.pdf
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" pdf input/格式规范.pdf --pages 1-4
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" pdf input/赛题.pdf --pages 2 --json
 ```
 
 ---

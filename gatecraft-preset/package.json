@@ -1,0 +1,12 @@
+{
+  "name": "@local/dsh-gatecraft-preset",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "GateCraft 数学建模预设：把 gatecraft 插件的五阶段流水线封装为 agent 预设 math-modeling。",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

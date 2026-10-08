@@ -1,9 +1,9 @@
 # 检索文献
 
 ```bash
-python skills/mcm-tools/scripts/mcm_scholar.py search "vehicle routing multi-objective" --limit 8
-python skills/mcm-tools/scripts/mcm_scholar.py search "城市配送 路径规划" --limit 5 --year-from 2018
-python skills/mcm-tools/scripts/mcm_scholar.py get 10.1016/j.ejor.2007.05.055
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_scholar.py" search "vehicle routing multi-objective" --limit 8
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_scholar.py" search "城市配送 路径规划" --limit 5 --year-from 2018
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_scholar.py" get 10.1016/j.ejor.2007.05.055
 ```
 
 **无需 API Key。** 主源 OpenAlex，备用 Crossref。
@@ -37,7 +37,7 @@ python skills/mcm-tools/scripts/mcm_scholar.py get 10.1016/j.ejor.2007.05.055
 ### 找方法相关的经典文献
 
 ```bash
-python skills/mcm-tools/scripts/mcm_scholar.py search "multi-objective optimization NSGA-II" --limit 6
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_scholar.py" search "multi-objective optimization NSGA-II" --limit 6
 ```
 
 看 `被引` 数挑经典的（被引高的通常是奠基性工作）。
@@ -45,13 +45,13 @@ python skills/mcm-tools/scripts/mcm_scholar.py search "multi-objective optimizat
 ### 找近年工作
 
 ```bash
-python skills/mcm-tools/scripts/mcm_scholar.py search "urban delivery route optimization" --limit 8 --year-from 2020
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_scholar.py" search "urban delivery route optimization" --limit 8 --year-from 2020
 ```
 
 ### 拿到 DOI 后查完整信息
 
 ```bash
-python skills/mcm-tools/scripts/mcm_scholar.py get 10.1016/j.ejor.2007.05.055
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_scholar.py" get 10.1016/j.ejor.2007.05.055
 ```
 
 `get` 会返回 `volume` / `issue` / `page` —— 这些正是 `search` 常缺的字段。

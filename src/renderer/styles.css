@@ -1131,6 +1131,139 @@ button, textarea, input, select { font-family: inherit; font-size: inherit; colo
 .rb-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .rb-hint { flex: 1; font-size: 11px; color: var(--text-faint); line-height: 1.5; }
 
+/* ============ 赛事日历面板 ============
+   顶栏「赛事」按钮 + 弹出面板。状态徽标靠语义色区分：
+   报名中=翠绿 / 进行中=琥珀 / 已结束=灰 / 待公布=灰蓝。
+   倒计时用等宽数字（tabular-nums），避免每秒跳动时宽度抖。 */
+
+.cmp-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; font: inherit; font-size: 12.5px;
+  color: var(--text-soft);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.cmp-btn svg { width: 15px; height: 15px; }
+.cmp-btn:hover { color: var(--text); border-color: var(--line-strong); background: var(--panel); }
+/* 有"报名中"的赛事时点亮，提示用户点进来看倒计时 */
+.cmp-btn.urgent { color: var(--accent); border-color: rgba(251, 191, 36, .42); }
+.cmp-btn.urgent:hover { background: rgba(251, 191, 36, .10); }
+
+.cmp-mask {
+  position: fixed; inset: 0; z-index: 60;
+  background: rgba(2, 6, 23, .55);
+  backdrop-filter: blur(2px);
+}
+.cmp-panel {
+  position: fixed; z-index: 61;
+  top: 62px; right: 18px;
+  width: min(560px, calc(100vw - 36px));
+  max-height: calc(100vh - 92px);
+  display: flex; flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .48), 0 1px 0 rgba(255, 255, 255, .05) inset;
+  transform: translateY(-6px) scale(.99);
+  opacity: 0; pointer-events: none;
+  transition: opacity .16s ease, transform .16s ease;
+}
+.cmp-panel.open { opacity: 1; transform: none; pointer-events: auto; }
+
+.cmp-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.cmp-head h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--text); }
+.cmp-sub { margin: 4px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--text-faint); }
+.cmp-close { flex: none; }
+
+.cmp-list { overflow-y: auto; padding: 10px 12px 4px; }
+
+/* 单条赛事 */
+.cmp-item {
+  padding: 12px 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  margin-bottom: 9px;
+  background: var(--bg-soft);
+  transition: border-color .15s;
+}
+.cmp-item:hover { border-color: var(--line-strong); }
+/* 当前生效的赛事：左侧一道靛蓝条 + 淡底，一眼能认出来 */
+.cmp-item.active {
+  border-color: var(--brand-line);
+  background: linear-gradient(90deg, var(--brand-soft), transparent 60%), var(--bg-soft);
+}
+.cmp-row1 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cmp-name { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.cmp-full { margin-top: 2px; font-size: 11px; color: var(--text-faint); line-height: 1.5; }
+
+.cmp-status {
+  padding: 2px 8px; font-size: 11px; font-weight: 500;
+  border-radius: 999px; white-space: nowrap;
+}
+.cmp-status.open   { color: var(--ok);     background: var(--ok-soft); }
+.cmp-status.live   { color: var(--accent); background: rgba(251, 191, 36, .14); }
+.cmp-status.ended  { color: var(--text-faint); background: rgba(148, 163, 184, .12); }
+.cmp-status.tba    { color: var(--viz-1);  background: var(--viz-1-soft); }
+
+.cmp-count {
+  font-size: 11.5px; font-weight: 600; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.cmp-time { margin-top: 7px; font-size: 11.5px; color: var(--text-soft); line-height: 1.6; }
+.cmp-time b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.cmp-note {
+  margin-top: 7px; padding: 7px 9px;
+  font-size: 11px; line-height: 1.55; color: var(--text-soft);
+  background: rgba(0, 0, 0, .20);
+  border-left: 2px solid var(--line-strong);
+  border-radius: 4px;
+}
+
+.cmp-row2 {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 10px; padding-top: 9px;
+  border-top: 1px dashed var(--line);
+}
+.cmp-price { font-size: 12px; font-weight: 600; color: var(--text); }
+.cmp-price s { margin-right: 5px; font-weight: 400; color: var(--text-faint); }
+
+.cmp-lock { font-size: 11.5px; padding: 2px 8px; border-radius: 999px; }
+.cmp-lock.ok  { color: var(--ok); background: var(--ok-soft); }
+.cmp-lock.no  { color: var(--text-faint); background: rgba(148, 163, 184, .12); }
+
+.cmp-btn2 {
+  padding: 5px 11px; font: inherit; font-size: 11.5px;
+  color: var(--text-soft); background: transparent;
+  border: 1px solid var(--line); border-radius: 999px; cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.cmp-btn2:hover { color: var(--text); border-color: var(--line-strong); background: var(--panel-2); }
+.cmp-btn2.primary { color: var(--on-brand); background: var(--brand); border-color: var(--brand); }
+.cmp-btn2.primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+.cmp-btn2:disabled { opacity: .5; cursor: default; }
+.cmp-spacer { flex: 1; }
+
+.cmp-foot {
+  padding: 10px 18px 14px;
+  border-top: 1px solid var(--line);
+}
+.cmp-foot p { margin: 0; font-size: 10.5px; line-height: 1.6; color: var(--text-faint); }
+.cmp-foot-btns {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  margin-top: 9px; padding-top: 9px;
+  border-top: 1px dashed var(--line);
+}
+.cmp-foot-hint { font-size: 10.5px; line-height: 1.5; color: var(--text-faint); }
+
 /* 滚动条 */
 ::-webkit-scrollbar { width: 9px; height: 9px; }
 ::-webkit-scrollbar-track { background: transparent; }

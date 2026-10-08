@@ -1,10 +1,10 @@
 # 读写 Excel / CSV（赛题数据）
 
 ```bash
-python skills/mcm-tools/scripts/mcm_io.py xlsx input/附件1.xlsx --head 10
-python skills/mcm-tools/scripts/mcm_io.py xlsx input/附件1.xlsx --expect-rows 7470
-python skills/mcm-tools/scripts/mcm_io.py csv  input/data.csv --header --head 5
-python skills/mcm-tools/scripts/mcm_io.py info input/
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" xlsx input/附件1.xlsx --head 10
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" xlsx input/附件1.xlsx --expect-rows 7470
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" csv  input/data.csv --header --head 5
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" info input/
 ```
 
 ---
@@ -30,7 +30,7 @@ data = pd.read_excel("input/附件1.xlsx", sheet_name=0, header=None)
 **行数对不上就停下来报错，不要静默继续建模。**
 
 ```bash
-python skills/mcm-tools/scripts/mcm_io.py xlsx input/附件1.xlsx --expect-rows 7470
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" xlsx input/附件1.xlsx --expect-rows 7470
 # 不符时退出码 3，不会给你一份"看起来正常"的数据
 ```
 

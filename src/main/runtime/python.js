@@ -22,6 +22,10 @@ const PACKAGE_GROUPS = {
   ],
   docx: [
     { pip: 'python-docx', import: 'docx', label: 'Word 文档' },
+    // Word → PDF：走 Word COM（docx2pdf / pywin32）。
+    // ⚠️ 缺了它，「生成 Word 论文 + 转 PDF」这一步只能退回 LibreOffice 或失败；
+    // 之前依赖清单里没有它，装完环境才发现转不了 PDF。
+    { pip: 'pywin32', import: 'win32com', label: 'Word 转 PDF（Windows）', optional: true },
   ],
   search: [
     { pip: 'requests', import: 'requests', label: '网络请求 / 论文检索' },

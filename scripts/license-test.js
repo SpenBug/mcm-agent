@@ -99,6 +99,12 @@ check('TRIAL_MS 是 2 小时', L.TRIAL_MS === 2 * 3600 * 1000, String(L.TRIAL_MS
 const b = L.touchTrial(T2, { now: t0 + 30 * 60 * 1000 });   // 半小时后
 check('半小时后剩 1.5 小时', Math.round(b.remainingMs / 60000) === 90, Math.round(b.remainingMs / 60000) + ' 分');
 
+// ⚠️ 锚点主存在 machine.json：删掉 license.json（旧的重置漏洞）不能续命
+fs.rmSync(path.join(T2, 'license.json'), { force: true });
+const b2 = L.touchTrial(T2, { now: t0 + 30 * 60 * 1000 });
+check('删 license.json 不重置试用', b2.started === true && Math.round(b2.remainingMs / 60000) === 90,
+  `剩 ${Math.round(b2.remainingMs / 60000)} 分`);
+
 // ⚠️ 关键：把系统时间调回去，剩余时间不能变多
 const c = L.touchTrial(T2, { now: t0 });                  // 时间倒退回起点
 check('系统时间调回去不能续命', c.remainingMs <= b.remainingMs, `${Math.round(c.remainingMs / 60000)}分 vs ${Math.round(b.remainingMs / 60000)}分`);
@@ -125,11 +131,22 @@ const s2 = L.getLicenseState(T3, { now });
 check('写入有效凭证 → activated', s2.mode === 'activated', s2.mode);
 check('  带上卡密号', s2.card === 'MCM-2027-A3F9-8B2E-4C71', String(s2.card));
 
-L.writeState(T3, { credential: sign({ card: 'C', machine: 'OTHERMACHINE00000', expireAt: future }) });
+L.writeState(T3, { credential: sign({ card: 'OTHER', machine: 'OTHERMACHINE00000', expireAt: future }) });
 check('凭证绑的是别的机器 → 不能激活', L.getLicenseState(T3, { now }).mode !== 'activated');
 
+// 赛事绑定（按赛事定价）
+L.writeState(T3, { credential: sign({ card: 'CUMCM-2027-0001', machine: REAL_MACHINE, edition: 'pro', competition: 'cumcm', expireAt: future }) });
+check('新卡返回所绑赛事', L.getLicenseState(T3, { now }).competition === 'cumcm', L.getLicenseState(T3, { now }).competition);
+L.writeState(T3, { credential: goodCred });   // 旧卡：payload 里没有 competition
+check('旧卡无 competition → all（兼容已售卡）', L.getLicenseState(T3, { now }).competition === 'all', L.getLicenseState(T3, { now }).competition);
+
 L.writeState(T3, { credential: '' });
-L.writeState(T3, { trialFirstRunAt: now - L.TRIAL_MS - 1000, trialLastSeenAt: now });
+// 锚点在 machine.json（绑机器码）：把锚点拨到已过期
+const mj3 = JSON.parse(fs.readFileSync(path.join(T3, 'machine.json'), 'utf8'));
+mj3.trialFirstRunAt = now - L.TRIAL_MS - 1000;
+mj3.trialLastSeenAt = now;
+mj3.trialMachine = REAL_MACHINE;
+fs.writeFileSync(path.join(T3, 'machine.json'), JSON.stringify(mj3));
 check('体验期用完且无凭证 → expired', L.getLicenseState(T3, { now }).mode === 'expired');
 
 fs.rmSync(TMP, { recursive: true, force: true });

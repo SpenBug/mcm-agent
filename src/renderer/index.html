@@ -2,8 +2,13 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
+  <!-- CSP：
+       frame-src / object-src 必须放行 data: 与 file: —— PDF 预览是
+       <iframe src="data:application/pdf;base64,...">，不放行就是一片空白
+       （而且控制台只报 CSP 违规，界面上完全看不出原因）。
+       connect-src 保持 'self'：渲染层不直接发网络请求，全部走 IPC 到主进程。 -->
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; font-src 'self' data:;" />
+        content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; font-src 'self' data:; frame-src 'self' data: blob: file:; object-src 'self' data: blob: file:;" />
   <title>数模工坊</title>
   <!-- 主题初始化必须在样式表之前，否则会闪一帧默认主题 -->
   <script src="theme.js"></script>
@@ -50,6 +55,11 @@
         <span class="badge" id="modelBadge">未配置模型</span>
         <!-- 体验倒计时：到期后由 lockMask 接管，这个徽章隐藏 -->
         <span class="badge trial hidden" id="trialBadge" title="体验版剩余时间">体验中</span>
+        <!-- 赛事日历：顶栏按钮 + 展开面板，后台按当前赛事做授权门禁 -->
+        <button id="btnCompetitions" class="cmp-btn" type="button" title="赛事与解锁">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h18M9 3v6"/></svg>
+          <span>赛事</span>
+        </button>
         <!-- 命令面板入口：做成搜索框的样子，鼠标用户能发现、键盘用户直接 Ctrl+K -->
         <button class="cmdk-trigger" id="btnCmdk" type="button" title="打开命令面板">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
@@ -203,6 +213,27 @@
                     placeholder="粘贴卡密…"></textarea>
           <button class="btn primary lock-btn" type="button" id="lockActivate">解 锁</button>
           <div class="lock-err hidden" id="lockErr"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 赛事日历面板（顶栏 ▶ 赛事） -->
+    <div class="cmp-mask hidden" id="cmpMask"></div>
+    <div class="cmp-panel" id="cmpPanel">
+      <div class="cmp-head">
+        <div>
+          <h2>赛事日历</h2>
+          <p class="cmp-sub">比赛时间与状态由主进程按官方信息实时推导；下方按钮可切换所购赛事。</p>
+        </div>
+        <button class="icon-btn cmp-close" id="cmpClose" type="button">✕</button>
+      </div>
+      <div class="cmp-list" id="cmpList"></div>
+      <div class="cmp-foot">
+        <p>顶栏「赛事」按钮也能打开本面板。</p>
+        <p>按比赛期间成稿、按赛事定价；赛事之后的卡可到客服换全能包（¥168）。</p>
+        <div class="cmp-foot-btns">
+          <button class="cmp-btn2" id="cmpAiDraft" type="button">生成 AI 声明草稿</button>
+          <span class="cmp-foot-hint">按当前赛事规定生成到 reports/；用途与提示方式请自行核实填写</span>
         </div>
       </div>
     </div>

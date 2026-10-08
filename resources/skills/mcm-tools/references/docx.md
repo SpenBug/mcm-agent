@@ -1,10 +1,10 @@
 # 生成 Word 论文
 
 ```bash
-python skills/mcm-tools/scripts/mcm_docx.py inspect input/论文模板.docx
-python skills/mcm-tools/scripts/mcm_docx.py build 论文.docx --spec reports/paper_spec.json
-python skills/mcm-tools/scripts/mcm_docx.py build 论文.docx --template input/论文模板.docx --spec reports/paper_spec.json
-python skills/mcm-tools/scripts/mcm_docx.py check 论文.docx
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_docx.py" inspect input/论文模板.docx
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_docx.py" build 论文.docx --spec reports/paper_spec.json
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_docx.py" build 论文.docx --template input/论文模板.docx --spec reports/paper_spec.json
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_docx.py" check 论文.docx
 ```
 
 ---
@@ -16,7 +16,7 @@ python skills/mcm-tools/scripts/mcm_docx.py check 论文.docx
 ### 1. `inspect` —— 拿到模板先看结构
 
 ```bash
-python skills/mcm-tools/scripts/mcm_docx.py inspect input/论文模板.docx
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_docx.py" inspect input/论文模板.docx
 ```
 
 输出：章节骨架、用到的样式、表格数、内嵌图数、**发现的可替换占位符**（`{{xxx}}` 或 `【xxx】`）。
@@ -42,7 +42,7 @@ spec 是 JSON，格式见 `mcm_docx.py` 文件头的注释。支持的内容块�
 ### 3. `check` —— 交付前必跑
 
 ```bash
-python skills/mcm-tools/scripts/mcm_docx.py check 论文.docx
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_docx.py" check 论文.docx
 ```
 
 会检查：
@@ -59,9 +59,9 @@ python skills/mcm-tools/scripts/mcm_docx.py check 论文.docx
 竞赛提交基本都收 PDF，所以 **docx 生成完必须再转一份 PDF**。
 
 ```bash
-python skills/mcm-tools/scripts/mcm_docx.py pdf 论文.docx
-python skills/mcm-tools/scripts/mcm_docx.py pdf 论文.docx --out 提交/     # 指定输出目录
-python skills/mcm-tools/scripts/mcm_docx.py pdf 论文.docx --engine word  # 强制用 Word
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_docx.py" pdf 论文.docx
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_docx.py" pdf 论文.docx --out 提交/     # 指定输出目录
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_docx.py" pdf 论文.docx --engine word  # 强制用 Word
 ```
 
 **引擎自动选**：

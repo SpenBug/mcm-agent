@@ -1017,6 +1017,13 @@
     const empty = $('messages').querySelector('.empty-state');
     if (empty) empty.remove();
 
+    // 会话标题：第一条消息自动命名（取首行、截 20 字）。
+    // 以前所有会话都叫「新会话」，侧栏和历史列表完全分不出哪个是哪个。
+    if (state.sessionTitle === '新会话' || !state.sessionTitle) {
+      const firstLine = content.split('\n').find((l) => l.trim()) || content;
+      state.sessionTitle = firstLine.trim().slice(0, 20) || '新会话';
+    }
+
     // 先给工作区拍一张快照 —— 回滚时用它整体还原（覆盖 / 新增 / 删除都能回去）。
     // 失败不阻断发送：快照只是后悔药，不该变成发消息的前置条件。
     let snapId = '';
@@ -1413,9 +1420,14 @@
     const mask = $('lockMask');
     if (!mask) return;
     mask.classList.remove('hidden');
+    // 三种锁定原因要分开说 —— 用户看到"体验已结束"会以为自己没买过；
+    // 而付费卡到期的人需要的是"续期"而不是"激活"。
     if (state?.mode === 'none') {
       $('lockTitle').textContent = '需要激活';
       $('lockSub').textContent = '这台电脑还没有激活，激活后即可使用。';
+    } else if (state?.expiredCard) {
+      $('lockTitle').textContent = '授权已到期';
+      $('lockSub').textContent = `卡密 ${state.card || ''} 已过有效期。续期或购买新卡后即可继续使用。`;
     } else {
       $('lockTitle').textContent = '体验已结束';
       $('lockSub').textContent = '2 小时体验时间已用完。激活后即可继续使用。';
@@ -1566,6 +1578,190 @@
     $('btnContact')?.addEventListener('click', openQrModal);
     $('qrModalClose')?.addEventListener('click', closeQrModal);
     $('qrModalMask')?.addEventListener('click', closeQrModal);
+  }
+
+  /* ================= 赛事日历面板 =================
+   * 数据全部来自主进程（competitions:list）—— 状态与倒计时由主进程按
+   * 当前时间推导，渲染层只负责画，避免两边时钟/时区算得不一样。
+   */
+
+  let compState = null;      // { list, current, prices, license }
+  let compTicker = null;
+
+  /** 毫秒 → "43 天 5 小时" / "5 小时 12 分" / "12 分 30 秒" */
+  function fmtCountdown(ms) {
+    const t = Math.max(0, Math.floor(ms / 1000));
+    const d = Math.floor(t / 86400);
+    const h = Math.floor((t % 86400) / 3600);
+    const m = Math.floor((t % 3600) / 60);
+    const s = t % 60;
+    if (d > 0) return `${d} 天 ${h} 小时`;
+    if (h > 0) return `${h} 小时 ${m} 分`;
+    if (m > 0) return `${m} 分 ${s} 秒`;
+    return `${s} 秒`;
+  }
+
+  /** 时间戳 → "2026-11-20 09:00"（本地时区） */
+  function fmtLocal(ts) {
+    if (!ts) return '待公布';
+    const d = new Date(ts);
+    const p = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  /**
+   * 赛事是否已被当前授权解锁。
+   * 体验期（trial）不做赛事限制 —— 试用可以试所有赛事，这样用户才敢买。
+   */
+  function compUnlocked(c) {
+    const lic = compState?.license;
+    if (!lic || lic.mode === 'trial') return true;
+    if (lic.mode !== 'activated') return false;
+    const owned = lic.competition;
+    return !owned || owned === 'all' || owned === c.id;
+  }
+
+  function renderCompetitions() {
+    const host = $('cmpList');
+    if (!host || !compState) return;
+    const { list, current } = compState;
+    host.innerHTML = '';
+
+    for (const c of list) {
+      const unlocked = compUnlocked(c);
+      const isCurrent = c.id === current;
+      const el = document.createElement('div');
+      el.className = 'cmp-item' + (isCurrent ? ' active' : '');
+
+      // 倒计时只在"报名中"显示；进行中/已结束/待公布都不显示
+      const countdown = c.status === 'open' && c.countdownMs > 0
+        ? `<span class="cmp-count" data-start="${c.startAt}">距开赛 ${fmtCountdown(c.countdownMs)}</span>`
+        : '';
+
+      const timeLine = c.startAt
+        ? `比赛 <b>${fmtLocal(c.startAt)}</b> → <b>${fmtLocal(c.endAt)}</b>`
+          + (c.regDeadline ? `<br>报名截止 <b>${fmtLocal(c.regDeadline)}</b>` : '')
+          + (c.paperDeadline ? `　论文截止 <b>${fmtLocal(c.paperDeadline)}</b>` : '')
+        : `时间待官方公布`;
+
+      el.innerHTML = `
+        <div class="cmp-row1">
+          <span class="cmp-name">${esc(c.name)}</span>
+          <span class="cmp-status ${c.status}">${esc(c.statusText)}</span>
+          ${countdown}
+        </div>
+        <div class="cmp-full">${esc(c.fullName)}</div>
+        <div class="cmp-time">${timeLine}${c.fee ? `　官方报名费 <b>¥${c.fee}</b>/队` : ''}</div>
+        ${c.note ? `<div class="cmp-note">${esc(c.note)}</div>` : ''}
+        <div class="cmp-row2">
+          <span class="cmp-price">¥${c.price}</span>
+          <span class="cmp-lock ${unlocked ? 'ok' : 'no'}">${unlocked ? '已解锁' : '未解锁'}</span>
+          <span class="cmp-spacer"></span>
+          <button class="cmp-btn2" data-open="${esc(c.url)}">官网</button>
+          ${isCurrent
+            ? '<button class="cmp-btn2" disabled>当前赛事</button>'
+            : `<button class="cmp-btn2 primary" data-set="${esc(c.id)}">设为当前赛事</button>`}
+        </div>
+      `;
+      host.appendChild(el);
+    }
+
+    // 绑定按钮（用事件委托更省，但这里条目少，逐条绑更直观）
+    host.querySelectorAll('[data-set]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const r = await api.competitions.setCurrent(b.dataset.set);
+        if (r.ok) {
+          toast('已切换当前赛事');
+          await refreshCompetitions();
+          refreshLicense();   // 赛事变了 → 门禁可能变化
+        } else {
+          toast(r.error || '切换失败', 'err');
+        }
+      });
+    });
+    host.querySelectorAll('[data-open]').forEach((b) => {
+      b.addEventListener('click', async () => {
+        const r = await api.openExternal(b.dataset.open);
+        if (!r || !r.ok) toast((r && r.error) || '打不开链接', 'err');
+      });
+    });
+  }
+
+  /** 倒计时每秒重算 —— 本地推算，不每秒打 IPC */
+  function startCompTicker() {
+    if (compTicker) clearInterval(compTicker);
+    compTicker = setInterval(() => {
+      const nodes = document.querySelectorAll('.cmp-count[data-start]');
+      if (!nodes.length) return;
+      let anyOpen = false;
+      nodes.forEach((n) => {
+        const left = Number(n.dataset.start) - Date.now();
+        if (left > 0) {
+          n.textContent = '距开赛 ' + fmtCountdown(left);
+          anyOpen = true;
+        } else {
+          // 刚好跨过开赛时刻：状态需要重算，交给主进程
+          n.textContent = '即将开赛';
+          refreshCompetitions();
+        }
+      });
+      $('btnCompetitions')?.classList.toggle('urgent', anyOpen);
+    }, 1000);
+  }
+
+  async function refreshCompetitions() {
+    try {
+      compState = await api.competitions.list();
+    } catch {
+      compState = null;
+    }
+    const btn = $('btnCompetitions');
+    if (btn && compState) {
+      const soon = compState.list.find((c) => c.status === 'open' && c.countdownMs > 0);
+      btn.classList.toggle('urgent', Boolean(soon));
+      // 按钮上带出最近一场的天数，不用点开就知道时间
+      const label = btn.querySelector('span');
+      if (label) {
+        label.textContent = soon
+          ? `${soon.name} ${Math.ceil(soon.countdownMs / 86400000)}天`
+          : '赛事';
+      }
+    }
+    renderCompetitions();
+    startCompTicker();
+  }
+
+  function openCompetitions() {
+    $('cmpMask')?.classList.remove('hidden');
+    $('cmpPanel')?.classList.add('open');
+    refreshCompetitions();
+  }
+
+  function closeCompetitions() {
+    $('cmpMask')?.classList.add('hidden');
+    $('cmpPanel')?.classList.remove('open');
+  }
+
+  function bindCompetitionUI() {
+    $('btnCompetitions')?.addEventListener('click', openCompetitions);
+    $('cmpClose')?.addEventListener('click', closeCompetitions);
+    $('cmpMask')?.addEventListener('click', closeCompetitions);
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && $('cmpPanel')?.classList.contains('open')) closeCompetitions();
+    });
+    // AI 声明草稿：按当前赛事规定写到工作区 reports/
+    $('cmpAiDraft')?.addEventListener('click', async () => {
+      const r = await api.aiDeclare.draft({});
+      if (r && r.ok) {
+        toast(`已生成：${r.file}（用途与提示方式请自行核实填写）`);
+        await refreshFiles();
+      } else if (r && r.licenseBlocked) {
+        closeCompetitions();
+        refreshLicense();
+      } else {
+        toast((r && r.error) || '生成失败', 'err');
+      }
+    });
   }
 
   /* ================= 会话 ================= */
@@ -1784,7 +1980,10 @@
         <div class="desc" id="keyHint">${
           c.hasApiKey ? `已配置（尾号 ${esc(c.apiKeyTail)}），留空表示不修改` : '尚未配置，请填入你的 API Key'
         }</div>
-        <input type="password" id="fApiKey" placeholder="${c.hasApiKey ? '留空则保持不变' : 'sk-...'}">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="password" id="fApiKey" style="flex:1" placeholder="${c.hasApiKey ? '留空则保持不变' : 'sk-...'}">
+          ${c.hasApiKey ? '<button class="btn sm" type="button" id="btnClearKey" title="清除已保存的 Key">清除</button>' : ''}
+        </div>
       </div>
 
       <div class="field">
@@ -1872,6 +2071,16 @@
           updateHeader();
           $('testResult').innerHTML = '<div class="status-box ok">已保存 ✓</div>';
           setTimeout(closeDrawer, 500);
+        });
+
+        // 清除已保存的 Key：传 '' 才是显式清空（主进程按 undefined/'' 区分）
+        $('btnClearKey')?.addEventListener('click', async () => {
+          state.config = await api.config.save({ apiKey: '' });
+          $('fApiKey').value = '';
+          $('keyHint').textContent = '已清除，请重新填入你的 API Key';
+          $('testResult').innerHTML = '<div class="status-box info">已清除 API Key</div>';
+          updateHeader();
+          toast('已清除 API Key');
         });
       }
     );
@@ -1979,6 +2188,24 @@
   }
 
   async function init() {
+    // 整体兜底：init 里任何一步抛错都会让界面停在半初始化状态
+    // （按钮没绑、会话没加载），而且控制台之外看不到任何提示。
+    // 这里至少把错误显示出来，让用户能反馈。
+    try {
+      await initBody();
+    } catch (err) {
+      console.error('[init] 初始化失败：', err);
+      const host = $('messages');
+      if (host) {
+        host.innerHTML = `<div style="padding:24px;color:var(--danger);font-size:13px;line-height:1.8">
+          <b>初始化失败</b><br>${esc(err && err.message ? err.message : String(err))}<br>
+          <span style="color:var(--text-faint)">请截图反馈给客服；重启应用通常可恢复。</span>
+        </div>`;
+      }
+    }
+  }
+
+  async function initBody() {
     const info = await api.config.get();
     state.config = info.config;
     state.providers = info.providers || [];
@@ -2020,7 +2247,13 @@
 
     /* ---- 授权 ---- */
     bindLicenseUI();
-    refreshLicense();
+    // 显式 catch：函数内部虽已兜底，但万一后续改动引入抛错路径，
+    // 未处理的 rejection 会静默中断后面的初始化
+    refreshLicense().catch((e) => console.error('[license] 状态刷新失败：', e));
+
+    /* ---- 赛事日历 ---- */
+    bindCompetitionUI();
+    refreshCompetitions().catch((e) => console.error('[competitions] 刷新失败：', e));
 
     /* ---- 命令面板（Ctrl+K）---- */
     $('btnCmdk')?.addEventListener('click', openCmdk);
@@ -2209,6 +2442,23 @@
     document.addEventListener('dragleave', () => {
       dragDepth = Math.max(0, dragDepth - 1);
       if (dragDepth === 0) overlay.classList.remove('show');
+    });
+    /**
+     * ⚠️ document 级 drop 兜底 —— 没有它，文件落在**槽位以外的任何地方**
+     * （对话区、侧栏、顶栏）会走浏览器默认行为：把整个界面导航成那个文件
+     * （拖张图进来 = 应用变成图片查看器，只能重启）。
+     *
+     * 槽位自己的 drop 已经 stopPropagation，所以这里只会收到"落空"的那些：
+     * 一律 preventDefault 掉，然后提示用户拖到分类槽位里。
+     */
+    document.addEventListener('drop', (e) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      dragDepth = 0;
+      overlay.classList.remove('show');
+      // 落在槽位上时事件已被槽位消费（stopPropagation），不会走到这里；
+      // 能走到这里就是落空了 —— 给一句明确指引，别让用户以为拖成功了
+      toast('请拖到「赛题 / 规范 / 模板 / 数据」对应的分类槽位里', 'err');
     });
   }
 

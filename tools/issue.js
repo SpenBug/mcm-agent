@@ -28,6 +28,23 @@ const PRIV_PATH = path.join(ROOT, 'keys', 'license-private.pem');
 /** 台账路径可用环境变量覆盖 —— 测试要用临时文件，不能污染真台账 */
 const LEDGER = process.env.MCM_LEDGER || path.join(__dirname, 'issued.csv');
 
+/** 赛事与价目（与客户端同一份数据源，避免两边价格对不上） */
+const comps = require(path.join(ROOT, 'src', 'main', 'competitions'));
+
+/**
+ * 归一化赛事 id：缺省 = all（全能包，解锁全部赛事）。
+ * 传了不认识的直接抛错 —— 签错赛事的卡发出去就是客诉。
+ */
+function normalizeCompetition(s) {
+  if (s == null || s === '') return 'all';
+  const id = String(s).toLowerCase();
+  const known = comps.COMPETITIONS.map((c) => c.id).concat('all');
+  if (!known.includes(id)) {
+    throw new Error(`--competition 应为：${known.join(' / ')}（收到 "${s}"）`);
+  }
+  return id;
+}
+
 const argv = process.argv.slice(2);
 const cmd = argv[0];
 
@@ -71,10 +88,11 @@ function sign(payload, priv) {
  *
  * @returns {{credential:string, payload:object}}
  */
-function issue({ machine, days, until, edition = 'pro', buyer = '', note = '', now = Date.now() }) {
+function issue({ machine, days, until, edition = 'pro', competition, buyer = '', note = '', now = Date.now() }) {
   const priv = loadKey();
 
   const m = normalizeMachine(machine);
+  const comp = normalizeCompetition(competition);
 
   let expireAt;
   if (until) {
@@ -90,17 +108,17 @@ function issue({ machine, days, until, edition = 'pro', buyer = '', note = '', n
   const seq = (readLedger().length + 1).toString().padStart(4, '0');
   const card = `MCM-${new Date(now).getFullYear()}-${seq}`;
 
-  const payload = { card, machine: m, edition, expireAt, issuedAt: now, buyer };
+  const payload = { card, machine: m, edition, competition: comp, expireAt, issuedAt: now, buyer };
   const credential = sign(payload, priv);
 
   appendLedger({
-    card, machine: m, edition,
+    card, machine: m, edition, competition: comp,
     issuedAt: new Date(now).toISOString(),
     expireAt: new Date(expireAt).toISOString(),
     buyer, note,
   });
 
-  return { credential, payload, expireText: until || `${days == null ? 365 : days} 天` };
+  return { credential, payload, price: comps.PRICES[comp], expireText: until || `${days == null ? 365 : days} 天` };
 }
 
 function cmdNew() {
@@ -111,22 +129,26 @@ function cmdNew() {
       days: arg('days'),
       until: arg('until'),
       edition: arg('edition', 'pro'),
+      competition: arg('competition'),
       buyer: arg('buyer', ''),
       note: arg('note', ''),
     });
   } catch (e) {
     console.error('✗ ' + e.message);
-    console.error('  用法：node tools/issue.js new --machine 7E84-2A70-F998-6EB7 --days 365');
+    console.error('  用法：node tools/issue.js new --machine 7E84-2A70-F998-6EB7 --competition cumcm --days 365');
     process.exitCode = 2;
     return;
   }
 
   const { credential, payload } = r;
+  const compName = payload.competition === 'all' ? '全能包（全部赛事）'
+    : comps.get(payload.competition).fullName;
   console.log('');
   console.log('  ┌─ 卡密已生成 ──────────────────────────────────────');
   console.log('  │ 卡号      ' + payload.card);
   console.log('  │ 机器码    ' + pretty(payload.machine));
   console.log('  │ 版本      ' + payload.edition);
+  console.log('  │ 解锁赛事  ' + compName + '（售价 ¥' + r.price + '）');
   console.log('  │ 有效期    ' + r.expireText + '（到 ' + new Date(payload.expireAt).toISOString().slice(0, 10) + '）');
   if (payload.buyer) console.log('  │ 买家      ' + payload.buyer);
   console.log('  └───────────────────────────────────────────────────');
@@ -158,36 +180,96 @@ function cmdVerify() {
     console.log('  卡号      ' + v.payload.card);
     console.log('  机器码    ' + pretty(v.payload.machine));
     console.log('  版本      ' + v.payload.edition);
+    console.log('  解锁赛事  ' + (v.payload.competition || 'all') + '（旧卡缺省按全能包）');
     console.log('  到期      ' + new Date(v.payload.expireAt).toISOString().slice(0, 10));
   }
   process.exit(v.ok ? 0 : 1);
 }
 
 // --------------------------------------------------------------- list
-function readLedger() {
-  if (!fs.existsSync(LEDGER)) return [];
+const LEDGER_HEADER = 'card,machine,edition,competition,issuedAt,expireAt,buyer,note';
+
+/** 按 CSV 规则切一行（支持引号内逗号/换行转义） */
+function splitCsvLine(line) {
+  const out = [];
+  let cur = '';
+  let inQ = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i];
+    if (inQ) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i += 1; }
+      else if (ch === '"') inQ = false;
+      else cur += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === ',') { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+/**
+ * 确保台账是新表头（带 competition 列）。
+ * 老台账（7 列）自动迁移：按旧表头名字重排，competition 留空 = all。
+ * 只在缺列时重写一次，之后 append 走新列序。
+ */
+function ensureLedger() {
+  if (!fs.existsSync(LEDGER)) {
+    fs.writeFileSync(LEDGER, LEDGER_HEADER + '\n', 'utf8');
+    return;
+  }
+  const text = fs.readFileSync(LEDGER, 'utf8');
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  if (!lines.length) { fs.writeFileSync(LEDGER, LEDGER_HEADER + '\n', 'utf8'); return; }
+  const header = lines[0].trim();
+  if (header === LEDGER_HEADER) return;
+
+  const oldCols = header.split(',').map((s) => s.trim());
+  const want = LEDGER_HEADER.split(',');
+  const body = lines.slice(1).map((l) => {
+    const cells = splitCsvLine(l);
+    const obj = {};
+    oldCols.forEach((c, i) => { obj[c] = cells[i] ?? ''; });
+    obj.competition = obj.competition || 'all';   // 老卡全是全能包
+    return want.map((w) => obj[w] ?? '');
+  });
+  const esc = (v) => (/[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v));
+  fs.writeFileSync(LEDGER, [LEDGER_HEADER, ...body.map((r) => r.map(esc).join(','))].join('\n') + '\n', 'utf8');
+}
+
+/** 读台账为对象数组（列名对齐，老新格式都能读） */
+function readLedgerObjects() {
+  ensureLedger();
   const lines = fs.readFileSync(LEDGER, 'utf8').split(/\r?\n/).filter((l) => l.trim() && !l.startsWith('card,'));
-  return lines.map((l) => l.split(','));
+  const cols = LEDGER_HEADER.split(',');
+  return lines.map((l) => {
+    const cells = splitCsvLine(l);
+    const o = {};
+    cols.forEach((c, i) => { o[c] = cells[i] ?? ''; });
+    return o;
+  });
+}
+
+function readLedger() {
+  return readLedgerObjects();
 }
 
 function appendLedger(row) {
-  if (!fs.existsSync(LEDGER)) {
-    fs.writeFileSync(LEDGER, 'card,machine,edition,issuedAt,expireAt,buyer,note\n', 'utf8');
-  }
-  const esc = (v) => (/[",]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v));
-  fs.appendFileSync(LEDGER, [row.card, row.machine, row.edition, row.issuedAt, row.expireAt, row.buyer, row.note].map(esc).join(',') + '\n', 'utf8');
+  ensureLedger();
+  const esc = (v) => (/[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g, '""') + '"' : String(v));
+  fs.appendFileSync(LEDGER, [row.card, row.machine, row.edition, row.competition, row.issuedAt, row.expireAt, row.buyer, row.note].map(esc).join(',') + '\n', 'utf8');
 }
 
 function cmdList() {
-  const rows = readLedger();
+  const rows = readLedgerObjects();
   if (!rows.length) { console.log('  还没发过卡。'); return; }
   console.log('  共 ' + rows.length + ' 张');
   console.log('');
-  console.log('  卡号'.padEnd(16) + '机器码'.padEnd(20) + '到期'.padEnd(13) + '买家');
+  console.log('  卡号'.padEnd(16) + '赛事'.padEnd(12) + '到期'.padEnd(13) + '买家');
   console.log('  ' + '-'.repeat(58));
   for (const r of rows) {
-    console.log('  ' + String(r[0]).padEnd(14) + String(r[1]).padEnd(20)
-      + String(r[4] || '').slice(0, 10).padEnd(13) + String(r[5] || ''));
+    console.log('  ' + String(r.card).padEnd(14) + String(r.competition || 'all').padEnd(12)
+      + String(r.expireAt || '').slice(0, 10).padEnd(13) + String(r.buyer || ''));
   }
 }
 

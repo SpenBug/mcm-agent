@@ -145,7 +145,7 @@ drawio figures/fig_roadmap.drawio --no-sandbox --disable-gpu --export --format p
 > 生成完 docx 后立刻转：
 >
 > ```bash
-> python skills/mcm-tools/scripts/mcm_docx.py pdf 论文.docx
+> python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_docx.py" pdf 论文.docx
 > ```
 >
 > 引擎自动选（LibreOffice 优先，其次 Word COM）。转完**核对 PDF 页数与 docx 一致**，

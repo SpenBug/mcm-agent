@@ -1,9 +1,9 @@
 # 生成与编译 LaTeX 论文
 
 ```bash
-python skills/mcm-tools/scripts/mcm_latex.py build out/paper --spec reports/paper_spec.json
-python skills/mcm-tools/scripts/mcm_latex.py build out/paper --spec reports/paper_spec.json --compile
-python skills/mcm-tools/scripts/mcm_latex.py compile out/paper/main.tex
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_latex.py" build out/paper --spec reports/paper_spec.json
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_latex.py" build out/paper --spec reports/paper_spec.json --compile
+python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_latex.py" compile out/paper/main.tex
 ```
 
 **spec 格式与 `mcm_docx.py` 完全一致** —— 同一份 spec 能出 Word 和 LaTeX 两版，不用维护两份内容。

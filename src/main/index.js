@@ -26,6 +26,41 @@ if (noGpu) {
 
 let mainWindow = null;
 
+// ---------------------------------------------------------------------------
+// 单实例锁：双击两次图标 / 点任务栏重复启动时，只保留一个窗口。
+// 不加的话两个实例会**同时写 config.json 与 license.json**，
+// 后写的覆盖先写的（用户会看到设置莫名其妙回退、体验时长跳变）。
+//
+// ⚠️ 测试/截图模式（--smoke / --promo-shots / --shot / --make-icon）
+// **不加锁**：开发时主窗口往往正开着，加锁会让这些命令直接退出，
+// 冒烟测试就永远跑不起来（而且报的是"没输出"，指不到根因）。
+// ---------------------------------------------------------------------------
+const isUtilityRun = ['--smoke', '--promo-shots', '--shot', '--make-icon']
+  .some((f) => process.argv.includes(f));
+
+if (!isUtilityRun) {
+  const gotLock = app.requestSingleInstanceLock();
+  if (!gotLock) {
+    app.quit();
+  } else {
+    app.on('second-instance', () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+      }
+    });
+  }
+}
+
+// 全局异常兜底：主进程未捕获的异常默认会**静默**让应用行为异常。
+// 至少记下来，方便用户反馈时定位（不弹窗打扰，只写 stderr/日志）。
+process.on('uncaughtException', (err) => {
+  console.error('[main] 未捕获异常：', err && err.stack ? err.stack : err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[main] 未处理的 Promise 拒绝：', reason);
+});
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1480,
@@ -49,8 +84,25 @@ function createWindow() {
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    // 只放行 https 外链；file:// / javascript: 之类一律拒掉
+    if (/^https:\/\//i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
+  });
+
+  /**
+   * ⚠️ 拦截窗口内导航。
+   *
+   * 应用是 file:// 加载的单页界面，**任何**把当前窗口导航走的操作都会
+   * 让用户失去整个界面（且没有后退按钮可用）。来源有两类：
+   *   ① 界面里拖入文件、点了个外部链接 → 走浏览器默认导航
+   *   ② 渲染层被注入 → location.href = 'https://...' 直接劫持
+   * 这里只允许留在自己的 index.html 上，其余外链交给系统浏览器。
+   */
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    const isSelf = url.startsWith('file://') && /index\.html(\?|#|$)/.test(url);
+    if (isSelf) return;
+    e.preventDefault();
+    if (/^https:\/\//i.test(url)) shell.openExternal(url);
   });
 
   if (process.argv.includes('--dev')) {

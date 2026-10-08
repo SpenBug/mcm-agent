@@ -67,4 +67,15 @@ contextBridge.exposeInMainWorld('mcm', {
     qr: (kind) => ipcRenderer.invoke('license:qr', kind),
     activate: (credential) => ipcRenderer.invoke('license:activate', { credential }),
   },
+  // 赛事日历：状态/倒计时由主进程推导，渲染层只负责画
+  competitions: {
+    list: () => ipcRenderer.invoke('competitions:list'),
+    setCurrent: (id) => ipcRenderer.invoke('competition:setCurrent', id),
+  },
+  // 外链（赛事官网）：主进程只放行 https
+  openExternal: (url) => ipcRenderer.invoke('openExternal', url),
+  // AI 工具使用详情草稿（支撑材料）
+  aiDeclare: {
+    draft: (payload) => ipcRenderer.invoke('aiDeclare:draft', payload),
+  },
 });

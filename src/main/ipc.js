@@ -13,6 +13,7 @@ const drawio = require('./runtime/drawio');
 const { getSkillsRoot, getDefaultWorkspace, getUserDataDir, getBrandDir } = require('./paths');
 const license = require('./license');
 const snapshot = require('./snapshot');
+const comps = require('./competitions');
 
 let currentAbort = null;
 
@@ -132,6 +133,16 @@ function registerIpc(getWindow) {
 
 
   /**
+   * 当前赛事 id：用户在赛事面板选定的优先；没选 → 最近一场报名中的；
+   * 都没有 → null（表示"当前无指定赛事"，不做赛事级门禁）。
+   */
+  function currentCompetitionId() {
+    const cfg = readConfig();
+    if (cfg.currentCompetition && comps.get(cfg.currentCompetition)) return cfg.currentCompetition;
+    return comps.defaultCurrent();
+  }
+
+  /**
    * 授权门禁。
    *
    * ⚠️ 这是**多处埋点**中的一处 —— 只在校验一个地方，改一行前端就绕过去了。
@@ -139,12 +150,35 @@ function registerIpc(getWindow) {
    * 发消息、导材料、出图、看产物、存会话、装运行环境。
    *
    * 但 license:* 和 config:* 必须放行 —— 否则用户连激活和配置都做不到。
+   *
+   * 两层检查：
+   *   ① 模式：体验中/已激活 放行，expired/none 拦截；
+   *   ② 赛事：已激活的卡只解锁 competition 字段指定的赛事（all 或旧卡=全部），
+   *      当前赛事没解锁 → 拦截并给出该赛事价格与切换提示。
+   *      体验期**不做赛事限制**（试用可试所有赛事）。
    */
   function licenseBlocked() {
     const st = license.getLicenseState(getUserDataDir());
     if (st.mode === 'expired' || st.mode === 'none') {
       return { blocked: true, mode: st.mode, error: '体验已结束。激活后即可继续使用。' };
     }
+
+    let comp = null;
+    if (st.mode === 'activated') {
+      const curId = currentCompetitionId();
+      if (curId && !comps.unlocks(st.competition, curId)) {
+        const c = comps.get(curId);
+        comp = { id: c.id, name: c.name, price: c.price, bundlePrice: comps.PRICES.all };
+        return {
+          blocked: true,
+          mode: st.mode,
+          competition: comp,
+          error: `当前赛事「${c.name}」未解锁（¥${c.price}）。`
+            + `请在顶部「赛事」面板切换到已解锁的赛事，或购买本赛事卡密；全能包 ¥${comps.PRICES.all}。`,
+        };
+      }
+    }
+
     // 未拦截时把完整授权状态带回 —— 调用方（如体验版打水印）不用再算一遍
     return { blocked: false, state: st };
   }
@@ -204,8 +238,76 @@ function registerIpc(getWindow) {
       return { ok: false, error: '卡密无效，或不是给这台电脑签发的。请核对后重试，或联系客服。' };
     }
     license.writeState(ud, { credential });
-    console.log('[license] 激活成功：' + v.payload.card + '  机器码=' + machine.code);
+    // 这张卡解锁的是指定赛事 → 自动把"当前赛事"切过去，避免激活后立刻被赛事门禁拦住
+    const competition = v.payload.competition || 'all';
+    if (competition !== 'all' && comps.get(competition)) {
+      writeConfig({ currentCompetition: competition });
+    }
+    console.log('[license] 激活成功：' + v.payload.card + '  赛事=' + competition + '  机器码=' + machine.code);
     return { ok: true, ...license.getLicenseState(ud) };
+  });
+
+  /* ---------------- 赛事日历 ---------------- */
+
+  /**
+   * 赛事列表：状态与倒计时由主进程按当前时间推导（渲染层不自己算，
+   * 免得时区/时钟差异两边算得不一样）。
+   * 带出当前赛事、默认当前赛事与价目表，渲染层一次拿全。
+   */
+  ipcMain.handle('competitions:list', () => {
+    const st = license.getLicenseState(getUserDataDir());
+    const list = comps.list();
+    const current = currentCompetitionId();
+    return {
+      ok: true,
+      list,
+      current,
+      defaultCurrent: comps.defaultCurrent(),
+      prices: comps.PRICES,
+      license: {
+        mode: st.mode,
+        competition: st.competition || null,   // null = 未激活（体验期）
+        remainingText: st.remainingText,
+        card: st.card,
+      },
+    };
+  });
+
+  /** 设为当前赛事（决定门禁用哪一场校验解锁） */
+  ipcMain.handle('competition:setCurrent', (_e, id) => {
+    const c = comps.get(id);
+    if (!c) return { ok: false, error: '未知赛事' };
+    writeConfig({ currentCompetition: id });
+    return { ok: true, current: id };
+  });
+
+  /**
+   * 生成《AI 工具使用详情》草稿（支撑材料用）。
+   * 只写草稿到工作区 reports/ 下 —— 工具名称、用途、提示方式这些事实
+   * 必须由用户按实际使用情况填，**不替他编造声明**（虚假声明要取消评奖资格）。
+   */
+  ipcMain.handle('aiDeclare:draft', (_e, payload) => {
+    const g = licenseBlocked();
+    if (g.blocked) return { ok: false, licenseBlocked: true, error: g.error };
+    const ai = require('./agent/ai-declare');
+    const compId = currentCompetitionId();
+    const text = ai.buildDetailDraft({
+      competition: compId,
+      tool: payload?.tool,
+      purpose: payload?.purpose,
+      prompts: payload?.prompts,
+      review: payload?.review,
+    });
+    const ws = readConfig().workspace || getDefaultWorkspace();
+    const dir = path.join(ws, 'reports');
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      const out = path.join(dir, 'AI工具使用详情草稿.md');
+      fs.writeFileSync(out, text, 'utf8');
+      return { ok: true, file: path.relative(ws, out).replace(/\\/g, '/'), competition: compId };
+    } catch (err) {
+      return { ok: false, error: '写入失败：' + err.message };
+    }
   });
 
   /* ---------------- 配置 ---------------- */
@@ -218,7 +320,10 @@ function registerIpc(getWindow) {
 
   ipcMain.handle('config:save', (_e, patch) => {
     const clean = { ...patch };
-    if (clean.apiKey === undefined || clean.apiKey === '') delete clean.apiKey;
+    // undefined = 本次不动这个字段（部分更新）；
+    // '' = **显式清空**（用户点「清除 Key」或冒烟测试要验未配 Key 的守卫）。
+    // 以前两者都当"不改"，导致用户根本清不掉已保存的 Key。
+    if (clean.apiKey === undefined) delete clean.apiKey;
     writeConfig(clean);
     return publicConfig();
   });
@@ -385,6 +490,24 @@ function registerIpc(getWindow) {
     return true;
   });
 
+  /**
+   * 用系统浏览器打开外链（赛事官网 / 报名入口）。
+   *
+   * ⚠️ 只放行 https —— 否则渲染层一旦被注入，`file://` / `javascript:`
+   * 或本地可执行文件路径都能借这个通道被拉起来。
+   */
+  ipcMain.handle('openExternal', (_e, url) => {
+    let u;
+    try {
+      u = new URL(String(url || ''));
+    } catch {
+      return { ok: false, error: '链接格式不对' };
+    }
+    if (u.protocol !== 'https:') return { ok: false, error: '只允许打开 https 链接' };
+    shell.openExternal(u.toString());
+    return { ok: true };
+  });
+
   ipcMain.handle('workspace:read', (_e, rel) => {
     const ws = readConfig().workspace || getDefaultWorkspace();
     const abs = path.resolve(ws, rel || '');
@@ -464,6 +587,10 @@ function registerIpc(getWindow) {
   });
 
   ipcMain.handle('session:load', (_e, id) => {
+    // 授权门禁：锁定态（体验到期且未激活）不能翻出历史会话全文 ——
+    // 侧栏列表还看得到是渲染层的事，内容必须挡住
+    const g = licenseBlocked();
+    if (g.blocked) return null;
     const ws = readConfig().workspace || getDefaultWorkspace();
     const full = path.join(sessionsDir(ws), `${safeName(id)}.json`);
     if (!fs.existsSync(full)) return null;

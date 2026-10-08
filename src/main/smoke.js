@@ -9,13 +9,70 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const http = require('node:http');
+const crypto = require('node:crypto');
 const { app } = require('electron');
 
-const { getSkillsRoot, getDefaultWorkspace } = require('./paths');
+const { getSkillsRoot, getDefaultWorkspace, getUserDataDir } = require('./paths');
 const { buildSystemPrompt } = require('./agent/prompt');
 const { executeTool, TOOL_DEFS } = require('./agent/tools');
 const py = require('./runtime/python');
 const drawio = require('./runtime/drawio');
+const license = require('./license');
+
+/**
+ * 冒烟/演示跑之前，先把授权状态换成一张**临时有效凭证**，跑完恢复原状。
+ *
+ * 为什么必须这么做：冒烟会走真实的 `session:save` / `chat:send`，
+ * 而这些通道有授权门禁。开发机的 2 小时体验期一过，门禁就拦掉它们，
+ * 报出来的却是「session 保存后可见 ✗」「mock 一个都没收到」这种
+ * **指不到根因**的失败 —— 自检体系从此常年飘红。
+ *
+ * @returns {{restore:Function}} restore() 在 finally 里调用
+ */
+function withTempLicense() {
+  const ud = getUserDataDir();
+  const licFile = path.join(ud, 'license.json');
+  const backup = fs.existsSync(licFile) ? fs.readFileSync(licFile, 'utf8') : null;
+
+  // 临时凭证：competition 用 all，免得被"当前赛事未解锁"二次拦住
+  const machine = license.getMachineCode(ud);
+  const privPath = path.join(__dirname, '..', '..', 'keys', 'license-private.pem');
+  if (fs.existsSync(privPath)) {
+    const priv = fs.readFileSync(privPath, 'utf8');
+    const body = Buffer.from(JSON.stringify({
+      card: 'SMOKE-TEMP',
+      machine: machine.code,
+      edition: 'pro',
+      competition: 'all',
+      issuedAt: Date.now(),
+      expireAt: Date.now() + 3600 * 1000,
+    })).toString('base64url');
+    const sig = crypto.sign(null, Buffer.from(body), priv).toString('base64url');
+    license.writeState(ud, { credential: `${body}.${sig}` });
+  } else {
+    // 没有私钥（比如 CI 上只拷了 src/）→ 退而求其次：把体验锚点重置为"刚开始"
+    license.writeState(ud, { credential: '' });
+    const mf = path.join(ud, 'machine.json');
+    let m = {};
+    try { m = JSON.parse(fs.readFileSync(mf, 'utf8')) || {}; } catch { /* 新建 */ }
+    fs.mkdirSync(ud, { recursive: true });
+    fs.writeFileSync(mf, JSON.stringify({
+      ...m,
+      trialFirstRunAt: Date.now(),
+      trialLastSeenAt: Date.now(),
+      trialMachine: machine.code,
+    }, null, 2), 'utf8');
+  }
+
+  return {
+    restore() {
+      try {
+        if (backup === null) fs.rmSync(licFile, { force: true });
+        else fs.writeFileSync(licFile, backup, 'utf8');
+      } catch { /* 恢复失败不影响测试结论 */ }
+    },
+  };
+}
 
 async function checkBackend() {
   const out = [];
@@ -214,10 +271,21 @@ async function runSmoke(getWindow) {
   const win = getWindow();
   const logs = [];
 
+  // 授权前置：换成临时有效凭证，跑完恢复 —— 否则体验期一过，门禁会把
+  // session/chat 全拦掉，报出来的失败指不到根因（详见 withTempLicense 注释）
+  const lic = withTempLicense();
   win.webContents.on('console-message', (_e, level, message) => logs.push(`[lvl${level}] ${message}`));
   win.webContents.on('render-process-gone', (_e, d) => logs.push(`RENDER GONE: ${JSON.stringify(d)}`));
   win.webContents.on('did-fail-load', (_e, code, desc) => logs.push(`LOAD FAIL ${code} ${desc}`));
 
+  try {
+    await runSmokeBody(win, logs);
+  } finally {
+    lic.restore();
+  }
+}
+
+async function runSmokeBody(win, logs) {
   await new Promise((r) => setTimeout(r, 4000));
 
   try {
@@ -258,8 +326,54 @@ async function runSmoke(getWindow) {
     console.log('===运行环境面板===');
     console.log(envDom);
 
+    // 赛事日历面板：验证状态/倒计时/解锁渲染，以及"设为当前赛事"真的落库
+    const cmpDom = await win.webContents.executeJavaScript(`
+      (async () => {
+        document.getElementById('cmpMask')?.classList.add('hidden');
+        document.getElementById('btnCompetitions')?.click();
+        await new Promise(r => setTimeout(r, 900));
+        const items = [...document.querySelectorAll('.cmp-item')];
+        const cur = await window.mcm.competitions.list();
+        return JSON.stringify({
+          open: document.getElementById('cmpPanel')?.classList.contains('open'),
+          count: items.length,
+          statuses: items.map(i => (i.querySelector('.cmp-status')||{}).textContent).filter(Boolean),
+          hasCountdown: items.some(i => i.querySelector('.cmp-count')),
+          hasSetBtn: items.some(i => i.querySelector('[data-set]')),
+          current: cur.current,
+          defaultCurrent: cur.defaultCurrent,
+          prices: cur.prices,
+          licenseComp: cur.license?.competition,
+        });
+      })()
+    `);
+    console.log('===赛事日历面板===');
+    console.log(cmpDom);
+    const cmp = JSON.parse(cmpDom);
+    const cmpChecks = [
+      ['面板可打开', cmp.open === true],
+      ['渲染出赛事条目', cmp.count >= 5, cmp.count + ' 条'],
+      ['状态徽标已渲染', cmp.statuses.length === cmp.count],
+      ['报名中的赛事有倒计时', cmp.hasCountdown === true],
+      ['有「设为当前赛事」按钮', cmp.hasSetBtn === true],
+      ['今天默认当前赛事 = 数维杯', cmp.current === 'shuwei', String(cmp.current)],
+      ['价目表带回（国赛 ¥69）', cmp.prices?.cumcm === 69, String(cmp.prices?.cumcm)],
+      ['全能包 ¥168', cmp.prices?.all === 168, String(cmp.prices?.all)],
+    ];
+    let cmpPass = 0;
+    for (const [name, ok, detail] of cmpChecks) {
+      console.log(`${ok ? '✓' : '✗'} ${name}${detail ? `  [${detail}]` : ''}`);
+      if (ok) cmpPass += 1;
+    }
+    console.log(`赛事面板：${cmpPass}/${cmpChecks.length} 通过`);
+
     // 走完整 IPC 链路验证：配置 / 会话 / 工作区 / 技能 / 中止 / 连通性异常处理
-    const ipcDom = await win.webContents.executeJavaScript(`
+    // ⚠️ 第 7 条要把 apiKey 清空才能测到守卫分支，所以先在主进程备份原值
+    const { readConfig: rc, writeConfig: wc } = require('./store');
+    const keyBackup = rc().apiKey;
+    let ipcDom;
+    try {
+      ipcDom = await win.webContents.executeJavaScript(`
       (async () => {
         const out = {};
         const results = [];
@@ -307,11 +421,15 @@ async function runSmoke(getWindow) {
         } catch (e) { graceful = false; }
         results.push(['连通性失败优雅返回', graceful, '']);
 
-        // 7. 未配 Key 时发消息应给出明确提示而非崩溃
+        // 7. 未配 Key 时发消息应给出明确提示而非崩溃。
+        // ⚠️ 必须先把 key 清空 —— 开发机配置里有真 key 的话，
+        // 这条会走到真实网络请求而不是守卫分支，测的就不是守卫了。
+        // 原值由主进程在整段 IPC 测试前后备份/恢复（见 runSmokeBody）。
+        await window.mcm.config.save({ apiKey: '' });
         let guard = false;
         try {
           const r = await window.mcm.chat.send({ messages: [{ role: 'user', content: 'hi' }] });
-          guard = r.ok === false && /API Key/.test(r.error || '');
+          guard = r.ok === false && /API Key/i.test(r.error || '');
         } catch (e) { guard = false; }
         results.push(['未配 Key 有明确提示', guard, '']);
 
@@ -319,6 +437,10 @@ async function runSmoke(getWindow) {
         return JSON.stringify(out);
       })()
     `);
+    } finally {
+      // 恢复开发机的真实 Key（脱敏接口不回传明文，只能在主进程侧还原）
+      wc({ apiKey: keyBackup });
+    }
     console.log('===IPC 链路===');
     const ipcParsed = JSON.parse(ipcDom);
     let ipcPass = 0;
