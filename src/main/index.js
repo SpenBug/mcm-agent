@@ -130,13 +130,12 @@ app.whenReady().then(async () => {
 
   registerIpc(() => mainWindow);
 
-  // 图标生成：electron . --make-icon
+  // 图标改由独立脚本生成（形状真源 src/main/brand-mark.js）：
+  // 这里以前自己开一个普通窗口截图，本机无 GPU 会静默失败，
+  // 结果 icon.png 停在旧图上还照样打包发版。见 scripts/make-icon.js。
   if (process.argv.includes('--make-icon')) {
-    const { generateIcon } = require('./icon');
-    const out = path.join(__dirname, '..', '..', 'build', 'icon.png');
-    const r = await generateIcon(out);
-    console.log(`ICON => ${r.path} (${r.size.width}x${r.size.height})`);
-    app.quit();
+    console.log('图标生成已迁移，请跑：npm run icon');
+    app.exit(0);
     return;
   }
 

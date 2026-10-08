@@ -108,33 +108,107 @@ function getUserDataDir() {
 }
 
 /**
+ * 读目录里的 license.json，判断有没有「已激活的凭证」。
+ * 体验版的计时镜像只有 trialFirstRunAt 没有 credential，所以不能只看文件存在。
+ */
+function readHasCred(dir) {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(dir, 'license.json'), 'utf8'));
+    return Boolean(j && j.credential);
+  } catch {
+    return false;   // 目录/文件不存在或坏了都算「没有凭证」
+  }
+}
+
+/** 目录里是否已建好私有 Python 环境（几百 MB，重装代价很大） */
+function hasPythonEnv(dir) {
+  const py = process.platform === 'win32'
+    ? path.join(dir, 'python-env', 'Scripts', 'python.exe')
+    : path.join(dir, 'python-env', 'bin', 'python');
+  return fs.existsSync(py);
+}
+
+/**
+ * 目录里是否已经开始过试用（计时锚点）。
+ *
+ * 两处都查：machine.json 是现在的主存，license.json 是旧版本的唯一存放点 ——
+ * 迁移针对的正是**老版本装过的机器**，只看新位置会漏。
+ */
+function hasTrialAnchor(dir) {
+  for (const name of ['machine.json', 'license.json']) {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
+      if (j && typeof j.trialFirstRunAt === 'number') return true;
+    } catch {
+      /* 文件不存在或坏了，看下一个 */
+    }
+  }
+  return false;
+}
+
+const defaultProbe = {
+  dirExists: (d) => fs.existsSync(d),
+  hasCred: readHasCred,
+  hasPythonEnv,
+  hasTrialAnchor,
+};
+
+/**
+ * 判定「这次启动该不该把 userData 指回旧目录」——**纯函数，不碰 Electron**。
+ *
+ * 之所以要抽出来：这个判断决定改品牌名后老用户会不会丢卡密、要不要重装几百 MB
+ * 环境、体验期会不会被白送一次。埋在 app.setPath 里就没法离线测，
+ * 下次有人"顺手简化"就悄悄退化了。回归测试见 scripts/migration-test.js。
+ *
+ * 三条规则：
+ *  1. 新名下**已经激活过** → 绝不迁移（否则会把新买的卡换成旧目录的，等于降级）；
+ *  2. 旧目录里有**任何值得保的东西**（凭证 / 试用锚点 / Python 环境）才迁移；
+ *  3. 全新机器（旧目录不存在）不迁移。
+ *
+ * @param {object} o
+ * @param {string} o.current  新名下 userData 目录（%APPDATA%\阿一古数模）
+ * @param {string} o.legacy   旧名目录（%APPDATA%\数模工坊）
+ * @param {object} [o.probe]  文件系统探针，测试时注入假实现
+ * @returns {boolean} true = 指回旧目录
+ */
+function shouldMigrate({ current, legacy, probe = defaultProbe }) {
+  if (!legacy || !current) return false;
+  if (!probe.dirExists(legacy)) return false;                    // 规则 3
+  if (probe.hasCred(current)) return false;                      // 规则 1
+  return probe.hasCred(legacy) || probe.hasTrialAnchor(legacy) || probe.hasPythonEnv(legacy); // 规则 2
+}
+
+/**
  * 品牌改名后的 userData 迁移（**必须在 app ready 之前调用一次**）。
  *
  * 背景：Electron 的 userData 路径默认由 productName 决定。
  * 「数模工坊」→「阿一古数模」之后，路径从
  *   %APPDATA%\数模工坊  →  %APPDATA%\阿一古数模
- * 如果不处理，老用户升级后会发现：
- *   - **卡密失效**（license.json 在旧目录）→ 要他重新激活，必被投诉
- *   - 设置全丢（config.json 在旧目录）
- *   - Python 环境要重装（python-env 在旧目录，几百 MB）
+ * 不处理的话老用户升级后会：卡密失效要重新激活、设置全丢、
+ * Python 环境重装（几百 MB）、体验版还白捡一次全新试用。
  *
- * 做法：新目录不存在、旧目录存在 → **直接把 userData 指回旧目录**（零拷贝）。
- * 不复制文件的原因：python-env 有几百 MB，复制既慢又可能中途失败留下半套环境；
- * 而且复制后两份环境会各自更新，反而更难维护。
+ * ⚠️ 信号不能只看「目录/文件是否存在」：
+ *   - Electron 只要启动过一次就会创建 userData（还会写 Preferences）；
+ *   - 体验版也会在新目录写 license.json 做计时镜像，里面没有 credential。
+ * 实测踩过：改名后先跑了一次冒烟，新目录就出现了，按"新目录存在"判断
+ * 导致迁移永久失效，老用户的 license.json 与 python-env 一直躺在旧目录里。
  *
- * 新装用户（两个目录都没有）走新名，正常。
+ * 也不能只看凭证：那样**体验期老用户**会被漏掉 —— 新目录的 machine.json 没有锚点，
+ * 等于白送一次 2 小时试用，而且旧目录几百 MB 的 python-env 成了孤儿。
+ *
+ * 不复制文件：python-env 太大，复制既慢又可能中途失败留下半套环境。
  */
 function migrateLegacyUserData() {
   try {
     const current = app.getPath('userData');
     if (path.basename(current) !== '阿一古数模') return;   // 用户自定义过路径 → 不动
 
-    const appData = app.getPath('appData');
-    const legacy = path.join(appData, '数模工坊');
-    if (fs.existsSync(current) || !fs.existsSync(legacy)) return;
+    const legacy = path.join(app.getPath('appData'), '数模工坊');
 
-    app.setPath('userData', legacy);
-    console.log('[paths] 检测到旧版数据目录，继续沿用：' + legacy);
+    if (shouldMigrate({ current, legacy })) {
+      app.setPath('userData', legacy);
+      console.log('[paths] 沿用旧版数据目录（保住卡密 / 体验进度 / Python 环境）：' + legacy);
+    }
   } catch (err) {
     console.error('[paths] userData 迁移检查失败（不影响启动）:', err.message);
   }
@@ -193,4 +267,8 @@ module.exports = {
   getBrandDir,
   isDev,
   migrateLegacyUserData,
+  shouldMigrate,
+  readHasCred,
+  hasTrialAnchor,
+  hasPythonEnv,
 };

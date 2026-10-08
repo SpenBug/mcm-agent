@@ -279,7 +279,8 @@ npm run dist           # 出 NSIS 安装包 + 便携版到 dist/
 | **AI 声明措辞** | `src/main/agent/ai-declare.js` |
 | 界面风格 | `src/renderer/styles.css` 顶部的 `:root` 设计令牌 |
 | 更新内置技能 | 覆盖 `resources/skills/` 下的目录，重新打包 |
-| 换应用图标 | 改 `src/main/icon.js` 里的 HTML，跑 `node scripts/dev.js --make-icon` |
+| 换应用图标 | 改 `src/main/brand-mark.js`（形状唯一真源），跑 `npm run brand && npm run icon` |
+| 邀请码规则 | `src/main/competitions.js` 的 `inviteCodeFromCard` + `tools/issue.js` |
 
 ---
 

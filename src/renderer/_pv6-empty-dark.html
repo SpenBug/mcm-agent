@@ -11,29 +11,30 @@
 <body>
   <!-- 品牌图标：只定义一次，顶栏 / 首屏 / JS 动态生成处都靠 <use> 引用。
        ⚠️ 必须放在文档里（不能只塞进 defs 而不可达），<use> 是同文档引用。 -->
-  <svg class="brand-defs" width="0" height="0" aria-hidden="true" focusable="false">
-    <defs>
-      <linearGradient id="lgBrand" x1="0.15" y1="0" x2="0.85" y2="1">
-        <stop offset="0%" stop-color="#818cf8"/>
-        <stop offset="52%" stop-color="#6366f1"/>
-        <stop offset="100%" stop-color="#4338ca"/>
-      </linearGradient>
-      <linearGradient id="lgBrandGloss" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stop-color="#ffffff" stop-opacity=".28"/>
-        <stop offset="55%" stop-color="#ffffff" stop-opacity="0"/>
-      </linearGradient>
-      <symbol id="brandMark" viewBox="0 0 256 256">
-        <path d="M128 20 L222 74 Q232 80 232 92 L232 164 Q232 176 222 182 L128 236 L34 182 Q24 176 24 164 L24 92 Q24 80 34 74 Z"
-              fill="url(#lgBrand)"/>
-        <path d="M128 20 L222 74 Q232 80 232 92 L232 130 Q128 152 24 130 L24 92 Q24 80 34 74 Z"
-              fill="url(#lgBrandGloss)"/>
-        <path d="M170 84 H100 Q94 84 94 90 Q94 95 98 99 L138 128 L98 157 Q94 161 94 166 Q94 172 100 172 H170"
-              fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
-        <circle cx="170" cy="84" r="11" fill="#22d3ee"/>
-        <circle cx="170" cy="172" r="11" fill="#22d3ee"/>
-      </symbol>
-    </defs>
-  </svg>
+<!-- BRAND:MARK:START -->
+    <svg class="brand-defs" width="0" height="0" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="lgBrand" x1="0" y1="0" x2="0.85" y2="1"><stop offset="0%" stop-color="#4468bd"/><stop offset="52%" stop-color="#2b4179"/><stop offset="100%" stop-color="#1a2545"/></linearGradient>
+        <linearGradient id="lgBg" x1="0" y1="0" x2="0.85" y2="1"><stop offset="0%" stop-color="#4468bd"/><stop offset="52%" stop-color="#2b4179"/><stop offset="100%" stop-color="#1a2545"/></linearGradient>
+    <linearGradient id="lgHorse" x1="0" y1="0" x2="0.3" y2="1"><stop offset="0%" stop-color="#ffffff"/><stop offset="100%" stop-color="#dbe4ff"/></linearGradient>
+        <!-- 顶光：软渐变。用不透明矩形硬切的话，缩到 32px 会看成一条"地平线" -->
+        <linearGradient id="lgGloss" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.14"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </linearGradient>
+        <symbol id="brandMark" viewBox="0 0 256 256">
+          <!-- 圆角方底（界面里留 8px 内缩，顶栏小尺寸贴边会显挤；图标是全出血） -->
+          <rect x="8" y="8" width="240" height="240" rx="56" fill="url(#lgBrand)"/>
+          <rect x="8" y="8" width="240" height="140" rx="56" fill="url(#lgGloss)"/>
+          <path d="M153 74 L172 34 L184 70 Z" fill="#c3d0f5"/>
+              <path d="M150 32 C147 44 143 53 139 61 C124 68 108 80 92 96 C76 112 60 128 50 142 C44 151 42 160 46 167 C51 174 60 178 71 180 C84 182 94 186 99 193 C103 201 104 209 104 218 L178 218 C183 199 186 178 185 158 C184 134 178 110 169 89 C165 80 161 71 158 62 C160 52 158 41 150 32 Z" fill="url(#lgHorse)"/>
+              <path d="M157 62 C166 84 175 116 179 148 C182 174 180 198 175 218 L159 218 C165 197 167 174 164 150 C160 118 151 90 143 71 Z" fill="#3a569c" opacity=".55"/>
+              <circle cx="112" cy="101" r="7.5" fill="#1a2545"/>
+              <ellipse cx="57" cy="154" rx="5" ry="7" transform="rotate(-28 57 154)" fill="#1a2545" opacity=".85"/>
+        </symbol>
+      </defs>
+    </svg>
+    <!-- BRAND:MARK:END -->
 
   <div class="app">
     <!-- 顶栏 -->

@@ -23,12 +23,15 @@ const SUITES = [
   ['赛事日历', 'scripts/competitions-test.js'],
   ['AI 使用声明', 'scripts/ai-declare-test.js'],
   ['工作区快照', 'scripts/snapshot-test.js'],
+  ['改名后数据目录迁移', 'scripts/migration-test.js'],
+  ['品牌标记几何', 'scripts/icon-check.js'],
+  ['品牌标记与界面同源', 'scripts/sync-brand-mark.js', ['--check']],
 ];
 
 const results = [];
-for (const [label, file] of SUITES) {
+for (const [label, file, extra = []] of SUITES) {
   process.stdout.write(`\n${'='.repeat(60)}\n▶ ${label}  (${file})\n${'='.repeat(60)}\n`);
-  const r = spawnSync(process.execPath, [path.join(ROOT, file)], {
+  const r = spawnSync(process.execPath, [path.join(ROOT, file), ...extra], {
     cwd: ROOT,
     stdio: 'inherit',
   });

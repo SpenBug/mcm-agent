@@ -10,9 +10,13 @@ Thumbs.db
 __pycache__/
 *.pyc
 
-# 第三方版权资料不入库：COMAP / CUMCM 优秀论文集（O奖论文 PDF）
-# 完整技能库请从本地 ~/.agents/skills/ 复制该目录，见 README「技能库」一节。
-resources/skills/math-modeling/references/Outstanding Thesis/**/*.pdf
+# 第三方版权资料不入库：COMAP / CUMCM 优秀论文集（O奖论文 PDF）。
+# 技能库改名 math-modeling → mcm-* 后，旧路径已失效，这里改成按文件名全局匹配，
+# 否则版权 PDF 会重新出现在 git 与安装包裡（上次体检报告提过的风险）。
+**/Outstanding Thesis/**/*.pdf
+
+# 一次性草稿与跑偏产物（不属于应用，也不发版，但先留着）
+_scratch/
 
 # 授权密钥 —— 私钥绝不能进仓库
 keys/

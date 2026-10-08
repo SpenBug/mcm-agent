@@ -1,7 +1,7 @@
 {
   "name": "mcm-agent",
   "productName": "阿一古数模",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "阿一古数模：三阶段建模流水线 + draw.io 竞赛模式出图，支持自填 API 与自选模型",
   "main": "src/main/index.js",
   "author": {
@@ -31,6 +31,11 @@
     "test:license-e2e": "node scripts/license-e2e.js",
     "issue": "node tools/issue.js",
     "qr:crop": "python scripts/qr-crop.py",
+    "icon": "node scripts/run-electron.js scripts/make-icon.js",
+    "icon:check": "node scripts/icon-check.js",
+    "icon:preview": "node scripts/run-electron.js scripts/icon-preview.js",
+    "brand": "node scripts/sync-brand-mark.js",
+    "test:migration": "node scripts/migration-test.js",
     "test:snapshot": "node scripts/snapshot-test.js"
   },
   "build": {

@@ -17,14 +17,45 @@
  * 用法：
  *   node scripts/build.js           # 出 NSIS 安装包 + 便携版
  *   node scripts/build.js --dir     # 只出未打包目录（快，用于验收）
+ *   node scripts/build.js --no-icon-check   # 跳过图标新鲜度检查（不建议）
  */
 
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
 const dirOnly = process.argv.includes('--dir');
 
+/**
+ * 打包前确认图标产物与形状真源一致。
+ *
+ * 为什么值得拦在这里：上一轮真实发生过"马头路径改了、build/icon.png 还是旧的 ∑
+ * 六边形，照常打包发了版"。本机无 GPU 时普通窗口截图会静默失败，
+ * 所以过期只能靠**内容指纹**发现 —— 让它挡住发版，比事后看图发现强得多。
+ */
+function checkIconsOrAbort() {
+  if (process.argv.includes('--no-icon-check')) {
+    console.log('[build] 已跳过图标新鲜度检查（--no-icon-check）');
+    return;
+  }
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts', 'icon-check.js')], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  });
+  if (r.status !== 0) {
+    const stale = (r.stdout || '').split(/\r?\n/).filter((l) => l.trim().startsWith('✗'));
+    console.error('[build] 图标产物与品牌形状不一致，已中止打包：');
+    for (const l of stale) console.error('  ' + l.trim());
+    console.error('\n  修复：npm run brand && npm run icon');
+    console.error('  确实要跳过（不推荐）：node scripts/build.js --no-icon-check');
+    process.exit(1);
+  }
+  console.log('[build] 图标新鲜度检查通过');
+}
+
 async function main() {
+  checkIconsOrAbort();
+
   const { build, Platform, Arch } = require('app-builder-lib');
   const { DIR_TARGET } = require('app-builder-lib/out/core');
   const pkg = require(path.join(ROOT, 'package.json'));
