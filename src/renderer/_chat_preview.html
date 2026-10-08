@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<title>预览 · 对话态</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  html, body { height: 100%; }
+  .app { height: 100vh; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">∑</span>
+        <div class="brand-text"><h1>数模工坊</h1><p class="sub">C:\Users\92182\Documents\数模工坊工作区</p></div>
+      </div>
+      <div class="topbar-actions">
+        <span class="badge on">agnes-3.0-flash</span>
+        <button class="btn ghost">☾</button>
+        <button class="btn ghost">工作区</button>
+        <button class="btn ghost">运行环境</button>
+        <button class="btn primary">设置</button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <section class="side-block">
+        <div class="side-head"><span>会话</span><button class="icon-btn">＋</button></div>
+        <ul class="session-list">
+          <li class="session-item active"><span class="name">新会话</span><span class="del">✕</span></li>
+        </ul>
+      </section>
+      <section class="side-block grow">
+        <div class="side-head"><span>工作区文件</span><button class="icon-btn">⟳</button></div>
+        <ul class="file-tree">
+          <li class="tree-row dir"><span class="ic">▸</span><span class="nm">_selftest</span></li>
+          <li class="tree-row dir"><span class="ic">▸</span><span class="nm">code</span></li>
+          <li class="tree-row dir"><span class="ic">▸</span><span class="nm">figures</span></li>
+          <li class="tree-row dir"><span class="ic">▸</span><span class="nm">input</span></li>
+          <li class="tree-row dir"><span class="ic">▸</span><span class="nm">reports</span></li>
+          <li class="tree-row dir"><span class="ic">▸</span><span class="nm">results</span></li>
+        </ul>
+      </section>
+    </aside>
+
+    <main class="chat">
+      <div class="messages">
+        <!-- 用户 -->
+        <div class="msg user">
+          <div class="avatar">你</div>
+          <div class="msg-col">
+            <div class="bubble">材料我分好了，走完整五步，论文出 Word 版</div>
+          </div>
+        </div>
+
+        <!-- 助手：正文 + 思考过程（收起态） -->
+        <div class="msg assistant">
+          <div class="avatar">∑</div>
+          <div class="msg-col">
+            <div class="bubble">先把四类材料清点一遍，看看缺什么。</div>
+            <div class="think">
+              <div class="think-head">
+                <div class="think-row">
+                  <span class="caret">▸</span>
+                  <span class="think-title">思考过程</span>
+                  <span class="think-meta">3 步 · 全部完成</span>
+                </div>
+                <div class="think-steps">查看目录  ·  读取 PDF · 赛题.pdf  ·  读取表格 · 附件1.xlsx</div>
+              </div>
+              <div class="think-body"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 助手：正文 + 思考过程（展开态，含 4 张竖排卡片，1 个失败） -->
+        <div class="msg assistant">
+          <div class="avatar">∑</div>
+          <div class="msg-col">
+            <div class="bubble">读一下赛题和附件，确认数据规模。</div>
+            <div class="think open has-fail">
+              <div class="think-head">
+                <div class="think-row">
+                  <span class="caret">▸</span>
+                  <span class="think-title">思考过程</span>
+                  <span class="think-meta">思考 · 4 步 · 1 个失败</span>
+                </div>
+                <div class="think-steps">（展开后不显示）</div>
+              </div>
+              <div class="think-body">
+                <div class="think-reasoning">先确认四类材料齐不齐。input/ 下面应该四个子目录，逐个列一下。
+赛题是 PDF，得先看页数和前几页有没有附件说明。
+数据是 xlsx，要看表头和行数，判断是不是长表。
+规范那份是 docx，主要看页边距、字号、参考文献格式这几条硬要求。
+模板给了 .docx 和 .tex 两个版本，先不急着套，等规则卡出来再定。</div>
+                <div class="tool-card ok">
+                  <div class="tool-head"><span class="dot"></span><span class="nm">查看目录</span><span class="raw">run_command</span><span class="meta">312 ms</span></div>
+                  <div class="tool-body"><div class="tool-args"><span class="k">参数</span><pre>{
+  "command": "python skills/mcm-tools/scripts/mcm_io.py info input/"
+}</pre></div></div>
+                </div>
+                <div class="tool-card ok">
+                  <div class="tool-head"><span class="dot"></span><span class="nm">读取 PDF · 赛题.pdf</span><span class="raw">run_command</span><span class="meta">88 ms</span></div>
+                  <div class="tool-body"><div class="tool-args"><span class="k">参数</span><pre>{
+  "command": "python skills/mcm-tools/scripts/mcm_io.py pdf \"input/赛题/赛题.pdf\" --pages 1-3"
+}</pre></div></div>
+                </div>
+                <div class="tool-card fail">
+                  <div class="tool-head"><span class="dot"></span><span class="nm">读取表格 · 附件1.xlsx</span><span class="raw">run_command</span><span class="meta">失败</span></div>
+                  <div class="tool-body"><div class="tool-args"><span class="k">参数</span><pre>{
+  "command": "python skills/mcm-tools/scripts/mcm_io.py xlsx \"input/数据/附件1.xlsx\" --head 15"
+}</pre></div></div>
+                </div>
+                <div class="tool-card ok">
+                  <div class="tool-head"><span class="dot"></span><span class="nm">读取 规则卡.md</span><span class="raw">read_file</span><span class="meta">41 ms</span></div>
+                  <div class="tool-body"><div class="tool-args"><span class="k">参数</span><pre>{
+  "path": "reports/规则卡.md"
+}</pre></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="turn-status error">⚠ 已达最大迭代次数（80），任务可能未完成。可继续发消息让它接着做。</div>
+      </div>
+
+      <div class="composer">
+        <textarea id="input" rows="3" placeholder="描述你的题目或任务，例如：把 CUMCM 2024 A 题做完整流程，论文出 Word 版"></textarea>
+        <div class="composer-bar">
+          <span class="hint" id="statusHint"></span>
+          <div class="composer-btns">
+            <button class="btn danger hidden">停止</button>
+            <button class="btn primary">发送</button>
+          </div>
+        </div>
+      </div>
+    </main>
+    <aside class="preview hidden"></aside>
+  </div>
+<script>
+// 几何验证：卡片必须是竖排的 —— 相邻卡片的 top 不同、left 相同
+setTimeout(() => {
+  const cards = Array.from(document.querySelectorAll('.think.open .tool-card'));
+  const out = [];
+  out.push('展开态卡片数 = ' + cards.length);
+  const rects = cards.map((c) => c.getBoundingClientRect());
+  rects.forEach((r, i) => out.push(`  第${i + 1}张 left=${Math.round(r.left)} top=${Math.round(r.top)} w=${Math.round(r.width)}`));
+  const sameLeft = rects.every((r) => Math.abs(r.left - rects[0].left) < 2);
+  const increasingTop = rects.every((r, i) => i === 0 || r.top > rects[i - 1].top + 10);
+  out.push('左边缘对齐（竖排特征）: ' + (sameLeft ? '✓' : '✗'));
+  out.push('top 递增（上下堆叠）: ' + (increasingTop ? '✓' : '✗'));
+  // 折叠块
+  const think = document.querySelector('.think:not(.open)');
+  const body = think && think.querySelector('.think-body');
+  out.push('收起态 think-body 不可见: ' + (body && getComputedStyle(body).display === 'none' ? '✓' : '✗'));
+  const pre = document.createElement('pre');
+  pre.id = 'geo';
+  pre.textContent = out.join('\n');
+  document.body.appendChild(pre);
+}, 300);
+</script>
+</body>
+</html>

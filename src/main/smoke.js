@@ -27,22 +27,38 @@ async function checkBackend() {
   out.push(`skillsRoot = ${skillsRoot}`);
   out.push(`  工具数 = ${TOOL_DEFS.length}（${TOOL_DEFS.map((t) => t.function.name).join(', ')}）`);
 
-  const mmSkill = path.join(skillsRoot, 'math-modeling', 'SKILL.md');
-  const mcmMode = path.join(skillsRoot, 'scibox-diagram', 'references', 'mcm-mode.md');
-  const sdScript = path.join(skillsRoot, 'scibox-diagram', 'scripts', 'task_bands.py');
-  out.push(`  math-modeling/SKILL.md      ${fs.existsSync(mmSkill) ? '✓' : '✗'}`);
-  out.push(`  scibox-diagram/mcm-mode.md  ${fs.existsSync(mcmMode) ? '✓' : '✗'}`);
-  out.push(`  scibox-diagram/task_bands.py ${fs.existsSync(sdScript) ? '✓' : '✗'}`);
+  const wfSkill = path.join(skillsRoot, 'mcm-workflow', 'SKILL.md');
+  const wfCheck = path.join(skillsRoot, 'mcm-workflow', '提交前自检.md');
+  const mfSkill = path.join(skillsRoot, 'mcm-figure', 'SKILL.md');
+  const mfStyle = path.join(skillsRoot, 'mcm-figure', 'scripts', 'mcm_style.py');
+  const mtSkill = path.join(skillsRoot, 'mcm-tools', 'SKILL.md');
+  const mtIo = path.join(skillsRoot, 'mcm-tools', 'scripts', 'mcm_io.py');
+  const mcmMode = path.join(skillsRoot, 'mcm-diagram', 'references', 'mcm-mode.md');
+  const sdScript = path.join(skillsRoot, 'mcm-diagram', 'scripts', 'task_bands.py');
+  out.push(`  mcm-workflow/SKILL.md       ${fs.existsSync(wfSkill) ? '✓' : '✗'}   ← 驱动层`);
+  out.push(`  mcm-workflow/提交前自检.md    ${fs.existsSync(wfCheck) ? '✓' : '✗'}`);
+  out.push(`  mcm-figure/SKILL.md         ${fs.existsSync(mfSkill) ? '✓' : '✗'}   ← 数据图`);
+  out.push(`  mcm-figure/mcm_style.py     ${fs.existsSync(mfStyle) ? '✓' : '✗'}`);
+  out.push(`  mcm-diagram/mcm-mode.md     ${fs.existsSync(mcmMode) ? '✓' : '✗'}   ← 非数据图`);
+  out.push(`  mcm-diagram/task_bands.py   ${fs.existsSync(sdScript) ? '✓' : '✗'}`);
+  out.push(`  mcm-tools/SKILL.md          ${fs.existsSync(mtSkill) ? '✓' : '✗'}   ← 工具链`);
+  out.push(`  mcm-tools/mcm_io.py         ${fs.existsSync(mtIo) ? '✓' : '✗'}`);
 
   const prompt = buildSystemPrompt({ workspace, skillsRoot, config: { autoApprove: true } });
   out.push(`systemPrompt 长度 = ${prompt.length} 字符`);
+  out.push(`  含「接料建卡」五步流程 = ${prompt.includes('接料建卡')}`);
+  out.push(`  含四类输入契约 = ${prompt.includes('客户必须提供的四类输入')}`);
+  out.push(`  含提交前自检路由 = ${prompt.includes('提交前自检.md')}`);
+  out.push(`  数据图走 mcm-figure = ${prompt.includes('skills/mcm-figure')}`);
+  out.push(`  非数据图走 mcm-diagram = ${prompt.includes('skills/mcm-diagram')}`);
+  out.push(`  无 scibox 残留 = ${!prompt.includes('scibox')}`);
   out.push(`  含「竞赛模式」= ${prompt.includes('竞赛模式')}`);
   out.push(`  含 fig_roadmap = ${prompt.includes('fig_roadmap')}`);
   out.push(`  含 DRAWIO_REPORT = ${prompt.includes('DRAWIO_REPORT')}`);
   out.push(`  含「不要用 Matplotlib」约束 = ${prompt.includes('不要用 Matplotlib')}`);
 
   try {
-    const r1 = await executeTool('read_file', { path: 'skills/scibox-diagram/references/mcm-mode.md', limit: 2 }, ctx);
+    const r1 = await executeTool('read_file', { path: 'skills/mcm-diagram/references/mcm-mode.md', limit: 2 }, ctx);
     out.push(`read_file(skills/...) => ${String(r1).split('\n')[0].slice(0, 90)}`);
   } catch (e) {
     out.push(`read_file 失败：${e.message}`);
@@ -275,8 +291,8 @@ async function runSmoke(getWindow) {
         // 4. 技能枚举
         const sk = await window.mcm.skills.info();
         results.push(['skills 枚举', sk.skills.length >= 2, sk.skills.map(s => s.id).join(', ')]);
-        const mm = sk.skills.find(s => s.id === 'math-modeling');
-        results.push(['技能描述已解析', Boolean(mm && mm.description && mm.files > 0), mm ? mm.files + ' 文件' : '']);
+        const mt = sk.skills.find(s => s.id === 'mcm-tools');
+        results.push(['技能描述已解析', Boolean(mt && mt.description && mt.files > 0), mt ? mt.files + ' 文件' : '']);
 
         // 5. 无任务时中止应无害
         let abortOk = false;

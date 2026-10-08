@@ -4,22 +4,59 @@
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; font-src 'self' data:;" />
-  <title>数模智能体</title>
+  <title>数模工坊</title>
+  <!-- 主题初始化必须在样式表之前，否则会闪一帧默认主题 -->
+  <script src="theme.js"></script>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+  <!-- 品牌图标：只定义一次，顶栏 / 首屏 / JS 动态生成处都靠 <use> 引用。
+       ⚠️ 必须放在文档里（不能只塞进 defs 而不可达），<use> 是同文档引用。 -->
+  <svg class="brand-defs" width="0" height="0" aria-hidden="true" focusable="false">
+    <defs>
+      <linearGradient id="lgBrand" x1="0.15" y1="0" x2="0.85" y2="1">
+        <stop offset="0%" stop-color="#818cf8"/>
+        <stop offset="52%" stop-color="#6366f1"/>
+        <stop offset="100%" stop-color="#4338ca"/>
+      </linearGradient>
+      <linearGradient id="lgBrandGloss" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#ffffff" stop-opacity=".28"/>
+        <stop offset="55%" stop-color="#ffffff" stop-opacity="0"/>
+      </linearGradient>
+      <symbol id="brandMark" viewBox="0 0 256 256">
+        <path d="M128 20 L222 74 Q232 80 232 92 L232 164 Q232 176 222 182 L128 236 L34 182 Q24 176 24 164 L24 92 Q24 80 34 74 Z"
+              fill="url(#lgBrand)"/>
+        <path d="M128 20 L222 74 Q232 80 232 92 L232 130 Q128 152 24 130 L24 92 Q24 80 34 74 Z"
+              fill="url(#lgBrandGloss)"/>
+        <path d="M170 84 H100 Q94 84 94 90 Q94 95 98 99 L138 128 L98 157 Q94 161 94 166 Q94 172 100 172 H170"
+              fill="none" stroke="#ffffff" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="170" cy="84" r="11" fill="#22d3ee"/>
+        <circle cx="170" cy="172" r="11" fill="#22d3ee"/>
+      </symbol>
+    </defs>
+  </svg>
+
   <div class="app">
     <!-- 顶栏 -->
     <header class="topbar">
       <div class="brand">
-        <span class="logo">∑</span>
+        <span class="logo"><svg viewBox="0 0 256 256" aria-hidden="true"><use href="#brandMark"/></svg></span>
         <div class="brand-text">
-          <h1>数模智能体</h1>
+          <h1>数模工坊</h1>
           <p class="sub" id="wsPath" title="当前工作区">未设置工作区</p>
         </div>
       </div>
       <div class="topbar-actions">
         <span class="badge" id="modelBadge">未配置模型</span>
+        <!-- 体验倒计时：到期后由 lockMask 接管，这个徽章隐藏 -->
+        <span class="badge trial hidden" id="trialBadge" title="体验版剩余时间">体验中</span>
+        <!-- 命令面板入口：做成搜索框的样子，鼠标用户能发现、键盘用户直接 Ctrl+K -->
+        <button class="cmdk-trigger" id="btnCmdk" type="button" title="打开命令面板">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <span>搜索命令…</span>
+          <kbd>Ctrl K</kbd>
+        </button>
+        <button id="btnTheme" class="btn ghost" title="切换主题">☾</button>
         <button id="btnWorkspace" class="btn ghost">工作区</button>
         <button id="btnEnv" class="btn ghost">运行环境</button>
         <button id="btnSettings" class="btn primary">设置</button>
@@ -42,16 +79,33 @@
         </div>
         <ul id="fileTree" class="file-tree"></ul>
       </section>
+
+      <!-- 版权与作者信息。防倒卖靠的是「一机一码」（倒卖的人卖出去别人也激活不了），
+           这里主要是品牌露出和溯源 —— 改了图就能去掉，所以不指望它拦住谁。 -->
+      <footer class="side-foot">
+        <div class="sf-auth hidden" id="sideLicense"></div>
+        <button class="sf-contact" type="button" id="btnContact" title="点开扫码加我">
+          <div class="sf-line">使用问题 / 购买找</div>
+          <div class="sf-social">微信 <b>xhxc287</b></div>
+          <div class="sf-social2">抖音 / 小红书 / B站 <b>@汉谟拉比法典</b></div>
+          <div class="sf-tap">点这里扫码 →</div>
+        </button>
+        <div class="sf-copy">© 2026 汉谟拉比法典 · 保留所有权利</div>
+      </footer>
     </aside>
 
     <!-- 对话主区 -->
     <main class="chat">
       <div id="messages" class="messages">
+        <!-- 静态占位：app.js 的 buildEmptyState() 会接管它。
+             这里只留品牌区，避免 JS 执行前闪一下空白或旧内容。 -->
         <div class="empty-state" id="emptyState">
-          <div class="empty-logo">∑</div>
-          <h2>数模智能体</h2>
-          <p>三阶段建模流水线 · draw.io 竞赛模式出图 · 可自填 API 与模型</p>
-          <div class="quick-cards" id="quickCards"></div>
+          <div class="es-brand">
+            <span class="es-mark"><svg viewBox="0 0 256 256" aria-hidden="true"><use href="#brandMark"/></svg></span>
+            <h2>数模工坊</h2>
+            <p class="es-lede">四类材料分别提交，剩下的我来。</p>
+          </div>
+          <div class="slots" id="slots"></div>
         </div>
       </div>
 
@@ -60,6 +114,8 @@
           placeholder="描述你的题目或任务，例如：把 CUMCM 2024 A 题做完整流程，论文出 Word 版"></textarea>
         <div class="composer-bar">
           <span class="hint" id="statusHint"></span>
+          <!-- Token 读数：常驻显示，点开是完整仪表盘 -->
+          <button class="token-bar hidden" id="tokenBar" type="button" title="查看 Token 用量仪表盘"></button>
           <div class="composer-btns">
             <button id="btnStop" class="btn danger hidden">停止</button>
             <button id="btnSend" class="btn primary">发送</button>
@@ -88,9 +144,84 @@
       <h2 id="drawerTitle">设置</h2>
       <button class="icon-btn" id="btnDrawerClose">✕</button>
     </div>
-    <div class="drawer-body" id="drawerBody"></div>
-  </aside>
+      <div class="drawer-body" id="drawerBody"></div>
+    </aside>
 
-  <script src="app.js"></script>
-</body>
-</html>
+    <!-- 命令面板（Ctrl+K） -->
+    <div class="cmdk-mask hidden" id="cmdkMask"></div>
+    <div class="cmdk hidden" id="cmdk" role="dialog" aria-modal="true" aria-label="命令面板">
+      <div class="cmdk-head">
+        <svg class="cmdk-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="cmdkInput" type="text" placeholder="搜索命令、会话、操作…" autocomplete="off" spellcheck="false" />
+        <kbd>Esc</kbd>
+      </div>
+      <div class="cmdk-list" id="cmdkList"></div>
+      <div class="cmdk-foot">
+        <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
+        <span><kbd>↵</kbd> 执行</span>
+        <span><kbd>Esc</kbd> 关闭</span>
+      </div>
+    </div>
+
+    <!-- 体验到期 / 未激活时的激活界面 -->
+    <div class="lock-mask hidden" id="lockMask">
+      <div class="lock-card">
+        <div class="lock-head">
+          <span class="lock-mark">∑</span>
+          <div>
+            <h2 id="lockTitle">体验已结束</h2>
+            <p class="lock-sub" id="lockSub">2 小时体验时间已用完。激活后即可继续使用。</p>
+          </div>
+        </div>
+
+        <div class="lock-sec">
+          <div class="lock-cap"><em>1</em>你的机器码</div>
+          <div class="machine-row">
+            <code id="lockMachine">········</code>
+            <button class="btn sm" type="button" id="lockCopy">复制</button>
+          </div>
+          <p class="lock-hint">复制这串码，加我微信后发过来</p>
+        </div>
+
+        <div class="lock-sec">
+          <div class="lock-cap"><em>2</em>扫码加我微信</div>
+          <div class="qr-pair">
+            <figure class="qr-item">
+              <img class="lock-qr hidden" id="lockQrWechat" alt="微信二维码" />
+              <figcaption>加我，把机器码发过来</figcaption>
+            </figure>
+          </div>
+          <p class="lock-hint">
+            微信号 <b>xhxc287</b>（也能直接搜这个号加我）<br />
+            付款和卡密都在微信里给你
+          </p>
+        </div>
+
+        <div class="lock-sec">
+          <div class="lock-cap"><em>3</em>把收到的卡密填在这里</div>
+          <textarea class="lock-input" id="lockInput" rows="3" spellcheck="false"
+                    placeholder="粘贴卡密…"></textarea>
+          <button class="btn primary lock-btn" type="button" id="lockActivate">解 锁</button>
+          <div class="lock-err hidden" id="lockErr"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 二维码弹窗：侧栏点联系方式时打开 -->
+    <div class="qr-modal hidden" id="qrModal">
+      <div class="qr-modal-mask" id="qrModalMask"></div>
+      <div class="qr-modal-card">
+        <div class="qm-head">
+          <span>联系我</span>
+          <button class="icon-btn" type="button" id="qrModalClose">✕</button>
+        </div>
+        <img class="qm-img hidden" id="qrModalImg" alt="微信二维码" />
+        <div class="qm-id">微信 <b>xhxc287</b></div>
+        <div class="qm-social">抖音 / 小红书 / B站 @汉谟拉比法典</div>
+        <div class="qm-hint">扫码加我，购买或使用问题都可以问</div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+  </html>

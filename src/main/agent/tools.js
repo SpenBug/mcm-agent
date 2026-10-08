@@ -12,10 +12,15 @@ const MAX_TIMEOUT = 900000;
 /* 路径安全                                                            */
 /* ------------------------------------------------------------------ */
 
+/** abs 是否落在 root 之内（含 root 自身） */
+function isInside(root, abs) {
+  const rel = path.relative(root, abs);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
 function resolveInside(root, target, label) {
   const abs = path.resolve(root, target || '.');
-  const rel = path.relative(root, abs);
-  if (rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))) return abs;
+  if (isInside(root, abs)) return abs;
   throw new Error(`${label} 越界：${target} 不在允许范围内（${root}）`);
 }
 
@@ -160,19 +165,42 @@ function truncate(text) {
   return `${s.slice(0, MAX_OUTPUT)}\n\n...（输出过长，已截断，共 ${s.length} 字符）`;
 }
 
-function runProcess(command, { cwd, timeout, shell, onOutput }) {
+/** 子进程统一环境变量：UTF-8 I/O + 把工作区根传给脚本兜底 */
+function processEnv(workspaceOrCwd) {
+  return {
+    ...process.env,
+    PYTHONIOENCODING: 'utf-8',
+    PYTHONUTF8: '1',
+    PYTHONUNBUFFERED: '1',
+    // 生成的脚本常被 cd 到 code/ 下跑，裸相对路径会失效；
+    // 脚本可以读这个变量兜底（首选还是从 __file__ 解析工作区根）
+    MCM_WORKSPACE: workspaceOrCwd || '',
+  };
+}
+
+/**
+ * 跑一条命令。
+ *
+ * `command` 传**字符串**时走 shell（run_command 需要 `&&`、重定向这类）；
+ * 传**数组**时不经过 shell，直接 argv 启动进程 —— run_python 走这条路，
+ * 这样脚本参数里的 `"` `&` `|` 只会当成普通字面值，不会被 cmd 二次解析成命令。
+ */
+function runProcess(command, { cwd, timeout, shell, onOutput, workspace }) {
   return new Promise((resolve) => {
-    const child = spawn(command, {
-      cwd,
-      shell: shell ?? true,
-      windowsHide: true,
-      env: {
-        ...process.env,
-        PYTHONIOENCODING: 'utf-8',
-        PYTHONUTF8: '1',
-        PYTHONUNBUFFERED: '1',
-      },
-    });
+    const argv = Array.isArray(command) ? command : null;
+    const child = argv
+      ? spawn(argv[0], argv.slice(1), {
+        cwd,
+        shell: false,
+        windowsHide: true,
+        env: processEnv(workspace || cwd),
+      })
+      : spawn(command, {
+        cwd,
+        shell: shell ?? true,
+        windowsHide: true,
+        env: processEnv(workspace || cwd),
+      });
 
     let stdout = '';
     let stderr = '';
@@ -257,9 +285,17 @@ async function executeTool(name, args, ctx) {
   /** 解析路径：skills/ 前缀 → 技能目录（只读） */
   const resolveRead = (p) => {
     const raw = String(p || '');
+    // ① skills/ 虚拟前缀 → 指向只读技能库
     if (raw.startsWith('skills/') || raw.startsWith('skills\\')) {
       return resolveInside(skillsRoot, raw.replace(/^skills[\\/]/, ''), '技能目录读取');
     }
+    // ② 直接给技能库的**绝对路径**也放行。
+    //    提示词里同时给了 SKILL_ROOT 绝对路径（run_command 必须用它，因为 shell 的
+    //    相对路径会按工作区解析），Agent 很容易照抄到 read_file 上。
+    //    只认 skillsRoot 之内的，安全性不变。
+    const abs = path.resolve(raw);
+    if (isInside(skillsRoot, abs)) return abs;
+    // ③ 其余按工作区解析
     return resolveInside(workspace, raw, '读取');
   };
 
@@ -300,7 +336,15 @@ async function executeTool(name, args, ctx) {
       if (occurrences > 1 && !a.replace_all) {
         throw new Error(`old_string 出现 ${occurrences} 次，不唯一。请补充上下文或设置 replace_all`);
       }
-      const next = a.replace_all ? text.split(oldStr).join(a.new_string ?? '') : text.replace(oldStr, a.new_string ?? '');
+      // ⚠️ 不能用 String.prototype.replace(old, new) —— 替换串里的 `$$`/`$&`/`` $` ``/`$'`/`$n`
+      //    会被当成模式展开。写 LaTeX 论文时 `$$ ... $$` 是行间公式，
+      //    用 replace 会静默把它改成 `$ ... $`，内容被吃坏。所以两分支都走 split/join。
+      const next = a.replace_all
+        ? text.split(oldStr).join(a.new_string ?? '')
+        : (() => {
+          const i = text.indexOf(oldStr);
+          return text.slice(0, i) + (a.new_string ?? '') + text.slice(i + oldStr.length);
+        })();
       fs.writeFileSync(abs, next, 'utf8');
       return `已更新 ${path.relative(workspace, abs)}（替换 ${a.replace_all ? occurrences : 1} 处）`;
     }
@@ -354,7 +398,7 @@ async function executeTool(name, args, ctx) {
 
     case 'run_command': {
       const cwd = a.cwd ? resolveInside(workspace, a.cwd, '工作目录') : workspace;
-      const r = await runProcess(a.command, { cwd, timeout: a.timeout, shell: true, onOutput });
+      const r = await runProcess(a.command, { cwd, timeout: a.timeout, shell: true, onOutput, workspace });
       const parts = [`退出码：${r.code}${r.killed ? '（超时被终止）' : ''}`];
       if (r.stdout.trim()) parts.push(`--- stdout ---\n${r.stdout.trim()}`);
       if (r.stderr.trim()) parts.push(`--- stderr ---\n${r.stderr.trim()}`);
@@ -364,21 +408,36 @@ async function executeTool(name, args, ctx) {
 
     case 'run_python': {
       const py = pythonPath || 'python';
-      let cmd;
+      // 解释器可能是「py -3」这种带参数的命令（没有路径分隔符就按空格拆开）。
+      const base = /[\\/]/.test(py) ? [py] : String(py).trim().split(/\s+/);
+      let argv;
+      let snippetFile = null;
       if (a.script) {
-        const abs = resolveInside(workspace, a.script, '脚本');
+        // 用 resolveRead 而不是 resolveInside(workspace) —— 技能脚本在只读技能库里，
+        // 用 workspace 限定会让 `run_python({script:"skills/..."})` 直接报越界。
+        const abs = resolveRead(a.script);
         if (!fs.existsSync(abs)) throw new Error(`脚本不存在：${a.script}`);
-        const extra = Array.isArray(a.args) ? a.args.map((x) => `"${x}"`).join(' ') : '';
-        cmd = `"${py}" "${abs}" ${extra}`.trim();
+        // ⚠️ 参数走 argv 数组，不拼 shell 字符串。
+        //    以前是 `args.map(x => `"${x}"`)` 直接拼进命令，参数里带 `"` `&` 就能注入任意命令
+        //    （实测：`" & echo PWNED > 路径` 真的执行了）。
+        argv = [...base, abs, ...(Array.isArray(a.args) ? a.args.map(String) : [])];
       } else if (a.code) {
-        const tmp = path.join(workspace, '.mcm-agent', `snippet_${Date.now()}.py`);
+        const tmp = path.join(workspace, '.mcm-agent', `snippet_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.py`);
         fs.mkdirSync(path.dirname(tmp), { recursive: true });
         fs.writeFileSync(tmp, a.code, 'utf8');
-        cmd = `"${py}" "${tmp}"`;
+        snippetFile = tmp;
+        argv = [...base, tmp];
       } else {
         throw new Error('必须提供 code 或 script');
       }
-      const r = await runProcess(cmd, { cwd: workspace, timeout: a.timeout, shell: true, onOutput });
+      const r = await runProcess(argv, { cwd: workspace, timeout: a.timeout, onOutput, workspace });
+      // 临时片段用完就删 —— 以前每次 run_python 都在 .mcm-agent/ 里留一个 snippet_*.py，
+      // 一轮建模能攒几十上百个，还会被 list_files / search_text 捞出来污染上下文。
+      if (snippetFile) {
+        try {
+          fs.unlinkSync(snippetFile);
+        } catch { /* 删不掉就算了，不影响本次结果 */ }
+      }
       const parts = [`退出码：${r.code}${r.killed ? '（超时被终止）' : ''}`];
       if (r.stdout.trim()) parts.push(`--- stdout ---\n${r.stdout.trim()}`);
       if (r.stderr.trim()) parts.push(`--- stderr ---\n${r.stderr.trim()}`);

@@ -1,0 +1,82 @@
+{
+  "title": "基于多目标优化的城市配送路径规划模型",
+  "abstract": {
+    "text": "本文针对城市配送路径规划问题，建立了以总里程最短和车辆数最少为目标的多目标优化模型，采用改进遗传算法求解，并在真实数据集上验证了模型的有效性。",
+    "keywords": [
+      "多目标优化",
+      "车辆路径问题",
+      "遗传算法"
+    ]
+  },
+  "sections": [
+    {
+      "heading": "一、问题重述",
+      "level": 1,
+      "blocks": [
+        {
+          "type": "para",
+          "text": "城市配送是物流系统的关键环节。"
+        },
+        {
+          "type": "list",
+          "items": [
+            "配送点数量大",
+            "时间窗约束强"
+          ]
+        }
+      ]
+    },
+    {
+      "heading": "二、模型建立",
+      "level": 1,
+      "blocks": [
+        {
+          "type": "para",
+          "text": "设决策变量 x_ij 表示车辆是否从 i 行驶到 j。"
+        },
+        {
+          "type": "equation",
+          "text": "min Z = Σ Σ c_ij · x_ij",
+          "number": "(1)"
+        },
+        {
+          "type": "table",
+          "caption": "表1 符号说明",
+          "header": [
+            "符号",
+            "含义"
+          ],
+          "rows": [
+            [
+              "c_ij",
+              "距离"
+            ],
+            [
+              "x_ij",
+              "决策变量"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "heading": "三、结果分析",
+      "level": 1,
+      "blocks": [
+        {
+          "type": "para",
+          "text": "三种方案的得分对比如图1所示。"
+        },
+        {
+          "type": "figure",
+          "path": "D:\\数学建模项目\\mcm-agent\\scripts\\skill-selftests\\_selftest\\fig_demo.png",
+          "caption": "图1 三种方案得分对比"
+        }
+      ]
+    }
+  ],
+  "references": [
+    "[1] 张三，运筹学，北京：高等教育出版社，12-34，2020。",
+    "[2] 李四，车辆路径问题综述，系统工程，38(2)：1-10，2020。"
+  ]
+}

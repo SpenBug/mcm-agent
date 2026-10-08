@@ -1,12 +1,22 @@
 'use strict';
 
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('mcm', {
   config: {
     get: () => ipcRenderer.invoke('config:get'),
     save: (patch) => ipcRenderer.invoke('config:save', patch),
     test: (override) => ipcRenderer.invoke('config:test', override),
+  },
+  input: {
+    // Electron 32+ 移除了 File.path，取真实路径必须走 webUtils（只能在 preload 调用）
+    pathForFile: (file) => webUtils.getPathForFile(file),
+    // 四类材料分别提交，第一个参数是分类键：赛题 / 规范 / 模板 / 数据
+    import: (cat, paths) => ipcRenderer.invoke('input:import', cat, paths),
+    pick: (cat) => ipcRenderer.invoke('input:pick', cat),
+    list: () => ipcRenderer.invoke('input:list'),
+    remove: (cat, name) => ipcRenderer.invoke('input:remove', cat, name),
+    openDir: (cat) => ipcRenderer.invoke('input:openDir', cat),
   },
   workspace: {
     choose: () => ipcRenderer.invoke('workspace:choose'),
@@ -22,6 +32,13 @@ contextBridge.exposeInMainWorld('mcm', {
     save: (payload) => ipcRenderer.invoke('session:save', payload),
     load: (id) => ipcRenderer.invoke('session:load', id),
     remove: (id) => ipcRenderer.invoke('session:delete', id),
+    rollback: (since) => ipcRenderer.invoke('session:rollback', { since }),
+  },
+  // 工作区快照：每轮对话前拍一张，回滚时整体还原（覆盖/新增/删除都能回去）
+  snapshot: {
+    create: (meta) => ipcRenderer.invoke('snapshot:create', meta),
+    list: () => ipcRenderer.invoke('snapshot:list'),
+    restore: (id) => ipcRenderer.invoke('snapshot:restore', id),
   },
   python: {
     status: () => ipcRenderer.invoke('python:status'),
@@ -43,5 +60,11 @@ contextBridge.exposeInMainWorld('mcm', {
   },
   skills: {
     info: () => ipcRenderer.invoke('skills:info'),
+  },
+  license: {
+    state: () => ipcRenderer.invoke('license:state'),
+    machine: () => ipcRenderer.invoke('license:machine'),
+    qr: (kind) => ipcRenderer.invoke('license:qr', kind),
+    activate: (credential) => ipcRenderer.invoke('license:activate', { credential }),
   },
 });

@@ -21,7 +21,23 @@ const { runAgent } = require('../src/main/agent/loop');
 
 const WORKSPACE = path.join(os.tmpdir(), 'mcm-agent-modeling-test');
 const SKILLS_ROOT = path.join(__dirname, '..', 'resources', 'skills');
-const PY = process.env.MCM_TEST_PYTHON || 'python';
+/**
+ * 挑一个**带 matplotlib** 的 Python。
+ *
+ * 原来写死裸 `python` —— PATH 上那个未必装了 matplotlib，
+ * 结果出图失败却看起来像产品 bug。优先用 app 自带环境。
+ */
+function pickPython() {
+  // ⚠️ 不要用 spawnSync 探测 —— 在受限环境里会 EBUSY，把所有候选都误判成不可用。
+  // 直接看 app 自带环境在不在（它一定装了 matplotlib）。
+  const appPy = path.join(
+    process.env.APPDATA || '', '数模工坊', 'python-env', 'Scripts', 'python.exe');
+  if (process.env.MCM_TEST_PYTHON) return process.env.MCM_TEST_PYTHON;
+  if (fs.existsSync(appPy)) return appPy;
+  return 'python';
+}
+
+const PY = pickPython();
 
 /** 一段真实的建模画图代码：阻尼振荡曲线 */
 const PLOT_CODE = [

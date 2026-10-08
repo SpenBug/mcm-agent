@@ -51,8 +51,8 @@ async function main() {
   check('read_file offset/limit 生效', r.includes('第二行') && !r.includes('第一行'), '');
 
   // 读技能库（skills/ 前缀）
-  r = await executeTool('read_file', { path: 'skills/scibox-diagram/SKILL.md', limit: 2 }, ctx);
-  check('read_file 经 skills/ 前缀读技能库', r.includes('scibox-diagram') || r.includes('draw.io'), r.split('\n')[0].slice(0, 60));
+  r = await executeTool('read_file', { path: 'skills/mcm-diagram/SKILL.md', limit: 2 }, ctx);
+  check('read_file 经 skills/ 前缀读技能库', r.includes('mcm-diagram') || r.includes('draw.io'), r.split('\n')[0].slice(0, 60));
 
   // 读不存在
   try {
@@ -82,6 +82,18 @@ async function main() {
   } catch (e) {
     check('edit_file 找不到原文应报错', /未在文件中找到/.test(e.message), e.message.slice(0, 50));
   }
+
+  // ⚠️ 回归：new_string 里的 $ 模式不能被 String.replace 展开。
+  // LaTeX 论文用 $$ ... $$ 表示行间公式，一旦被当成替换模式，公式会静默变成行内 $ ... $。
+  const texNew = '公式：\n$$\n\\alpha_1\n$$\n尾 $& 与 $$ 和 $1\n';
+  await executeTool('write_file', { path: 'tex1.md', content: 'TODO' }, ctx);
+  await executeTool('edit_file', { path: 'tex1.md', old_string: 'TODO', new_string: texNew }, ctx);
+  const texGot = fs.readFileSync(path.join(WORKSPACE, 'tex1.md'), 'utf8');
+  check('edit_file 不展开 $ 模式（单次替换）', texGot === texNew, JSON.stringify(texGot).slice(0, 80));
+  await executeTool('write_file', { path: 'tex2.md', content: 'TODO\nTODO' }, ctx);
+  await executeTool('edit_file', { path: 'tex2.md', old_string: 'TODO', new_string: 'A$$B', replace_all: true }, ctx);
+  check('edit_file 不展开 $ 模式（replace_all）',
+    fs.readFileSync(path.join(WORKSPACE, 'tex2.md'), 'utf8') === 'A$$B\nA$$B', '');
 
   /* ---------------- 4. list_files ---------------- */
   r = await executeTool('list_files', { pattern: '**/*.txt' }, ctx);
@@ -150,6 +162,21 @@ async function main() {
     check('run_python 缺参应报错', /必须提供/.test(e.message), e.message.slice(0, 40));
   }
 
+  // ⚠️ 回归：参数不能经过 shell。以前 args 是 `"${x}"` 拼进命令串，
+  // 参数里带 `" & echo PWNED > 路径` 就能注入任意命令（提示注入链可达）。
+  const injected = path.join(WORKSPACE, 'pwned-by-injection.txt');
+  r = await executeTool('run_python', {
+    script: 'calc.py',
+    args: ['ok', `" & echo X > "${injected}`],
+  }, ctx);
+  check('run_python 参数不被 shell 解析（无注入）', !fs.existsSync(injected), (r.match(/args: (.*)/) || ['', ''])[1]);
+  check('run_python 恶意参数按字面量传给脚本', r.includes('echo X'), '');
+
+  // code 片段用完要清掉，别在 .mcm-agent/ 里越堆越多
+  await executeTool('run_python', { code: 'print(1)' }, ctx);
+  const snippets = fs.readdirSync(path.join(WORKSPACE, '.mcm-agent')).filter((f) => f.startsWith('snippet_'));
+  check('run_python 用完清理临时片段', snippets.length === 0, snippets.join(','));
+
   /* ---------------- 8. 路径沙箱 ---------------- */
   const escapes = [
     ['write_file', { path: '../escape.txt', content: 'x' }],
@@ -176,7 +203,7 @@ async function main() {
 
   // 技能库只读：写 skills/ 前缀应被拒
   try {
-    await executeTool('write_file', { path: 'skills/scibox-diagram/evil.txt', content: 'x' }, ctx);
+    await executeTool('write_file', { path: 'skills/mcm-diagram/evil.txt', content: 'x' }, ctx);
     check('技能库应只读（写被拒）', false, '未拒绝');
   } catch (e) {
     check('技能库应只读（写被拒）', /只读/.test(e.message), e.message.slice(0, 50));
@@ -186,7 +213,7 @@ async function main() {
   check('拒绝后未在工作区留下 skills/ 目录', !fs.existsSync(path.join(WORKSPACE, 'skills')), '');
 
   try {
-    await executeTool('edit_file', { path: 'skills/scibox-diagram/SKILL.md', old_string: 'a', new_string: 'b' }, ctx);
+    await executeTool('edit_file', { path: 'skills/mcm-diagram/SKILL.md', old_string: 'a', new_string: 'b' }, ctx);
     check('技能库应只读（编辑被拒）', false, '未拒绝');
   } catch (e) {
     check('技能库应只读（编辑被拒）', /只读/.test(e.message), e.message.slice(0, 50));

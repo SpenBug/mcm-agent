@@ -1,0 +1,63 @@
+{
+  "title": "基于多目标优化的城市配送路径规划模型",
+  "abstract": {
+    "text": "本文针对城市配送路径规划问题，建立了多目标优化模型。",
+    "keywords": [
+      "多目标优化",
+      "车辆路径问题"
+    ]
+  },
+  "sections": [
+    {
+      "heading": "一、问题重述",
+      "level": 1,
+      "blocks": [
+        {
+          "type": "para",
+          "text": "城市配送是物流系统的关键环节。"
+        }
+      ]
+    },
+    {
+      "heading": "二、模型建立",
+      "level": 1,
+      "blocks": [
+        {
+          "type": "para",
+          "text": "目标函数如下。"
+        },
+        {
+          "type": "equation",
+          "text": "min Z = \\sum_i \\sum_j c_{ij} x_{ij}",
+          "number": "(1)"
+        },
+        {
+          "type": "table",
+          "caption": "表1 符号说明",
+          "header": [
+            "符号",
+            "含义"
+          ],
+          "rows": [
+            [
+              "c_ij",
+              "距离"
+            ],
+            [
+              "x_ij",
+              "决策变量"
+            ]
+          ]
+        },
+        {
+          "type": "figure",
+          "path": "D:\\数学建模项目\\mcm-agent\\scripts\\skill-selftests\\_selftest\\fig_demo.png",
+          "caption": "图1 方案得分对比"
+        }
+      ]
+    }
+  ],
+  "references": [
+    "[1] 张三，运筹学，北京：高等教育出版社，12-34，2020。"
+  ]
+}

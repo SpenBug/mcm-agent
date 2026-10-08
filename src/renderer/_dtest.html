@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<title>集成测试 · 材料删除</title>
+<link rel="stylesheet" href="styles.css" />
+<style>html,body{height:100%}.app{height:100vh}</style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="logo">∑</span>
+        <div class="brand-text"><h1>数模工坊</h1><p class="sub" id="wsPath">测试</p></div></div>
+      <div class="topbar-actions">
+        <span class="badge" id="modelBadge">测试</span>
+        <button id="btnTheme" class="btn ghost">☾</button>
+        <button id="btnWorkspace" class="btn ghost">工作区</button>
+        <button id="btnEnv" class="btn ghost">运行环境</button>
+        <button id="btnSettings" class="btn primary">设置</button>
+      </div>
+    </header>
+    <aside class="sidebar">
+      <section class="side-block"><div class="side-head"><span>会话</span><button id="btnNewSession" class="icon-btn">＋</button></div>
+        <ul id="sessionList" class="session-list"></ul></section>
+      <section class="side-block grow"><div class="side-head"><span>工作区文件</span><button id="btnRefreshFiles" class="icon-btn">⟳</button></div>
+        <ul id="fileTree" class="file-tree"></ul></section>
+    </aside>
+    <main class="chat">
+      <div id="messages" class="messages">
+        <div class="empty-state" id="emptyState">
+          <div class="es-brand"><span class="es-mark">∑</span><h2>数模工坊</h2>
+            <p class="es-lede">四类材料分别提交，剩下的我来。</p></div>
+          <div class="slots" id="slots"></div>
+        </div>
+      </div>
+      <div class="composer">
+        <textarea id="input" rows="3"></textarea>
+        <div class="composer-bar"><span class="hint" id="statusHint"></span>
+          <div class="composer-btns"><button id="btnStop" class="btn danger hidden">停止</button>
+            <button id="btnSend" class="btn primary">发送</button></div></div>
+      </div>
+    </main>
+    <aside class="preview hidden" id="previewPane">
+      <div class="preview-head"><span id="previewTitle">预览</span>
+        <div><button id="btnPreviewOpen" class="icon-btn">↗</button><button id="btnPreviewClose" class="icon-btn">✕</button></div></div>
+      <div class="preview-body" id="previewBody"></div>
+    </aside>
+  </div>
+  <div class="mask hidden" id="mask"></div>
+  <aside class="drawer hidden" id="drawer">
+    <div class="drawer-head"><h2 id="drawerTitle">设置</h2><button class="icon-btn" id="btnDrawerClose">✕</button></div>
+    <div class="drawer-body" id="drawerBody"></div>
+  </aside>
+
+<script>
+window.__calls = [];
+const rec = (n) => (...a) => { window.__calls.push([n, ...a]); return Promise.resolve({ ok: true }); };
+// 可变的数据源：删除后真的会变少
+window.__store = {
+  '赛题': [{ name: 'C题.pdf', kind: 'file', bytes: 708608 }],
+  '规范': [{ name: '格式规范.docx', kind: 'file', bytes: 45056 }],
+  '模板': [
+    { name: 'cumcmthesis.cls', kind: 'file', bytes: 32000 },
+    { name: 'cumcm2026.sty', kind: 'file', bytes: 8000 },
+  ],
+  '数据': [{ name: '附件1.xlsx', kind: 'file', bytes: 120000 }],
+};
+window.mcm = {
+  config: { get: () => Promise.resolve({ config: { provider:'deepseek', model:'t', workspace:'C:\\t', hasApiKey: true }, skillsRoot:'S' }),
+            save: rec('config.save'), test: rec('config.test') },
+  workspace: { ensure: () => Promise.resolve('C:\\t'), choose: () => Promise.resolve(null),
+               list: () => Promise.resolve([]), openPath: rec('w.openPath'), reveal: rec('w.reveal'),
+               read: () => Promise.resolve(''), dataUrl: () => Promise.resolve('') },
+  session: { list: () => Promise.resolve([]), load: () => Promise.resolve(null), save: rec('s.save'), remove: rec('s.remove') },
+  input: {
+    pathForFile: () => '', import: rec('input.import'), pick: rec('input.pick'),
+    list: () => Promise.resolve({ dir:'input', cats: [
+      { key:'赛题', label:'竞赛赛题', hint:'', files: window.__store['赛题'] },
+      { key:'规范', label:'格式规范', hint:'', files: window.__store['规范'] },
+      { key:'模板', label:'论文模板', hint:'', files: window.__store['模板'] },
+      { key:'数据', label:'赛题数据', hint:'', files: window.__store['数据'] },
+    ] }),
+    remove: (cat, name) => {
+      window.__calls.push(['input.remove', cat, name]);
+      window.__store[cat] = (window.__store[cat] || []).filter((f) => f.name !== name);
+      return Promise.resolve({ ok: true });
+    },
+    openDir: rec('input.openDir'),
+  },
+  python: { status: () => Promise.resolve({ ok:true }), setup: rec('p.setup'), setPath: rec('p.setPath') },
+  drawio: { status: () => Promise.resolve({ ok:true }), export: rec('d.export') },
+  chat: { send: rec('chat.send'), abort: rec('chat.abort'), onEvent: () => {} },
+};
+window.confirm = () => true;   // 自动确认删除弹窗
+window.onerror = (m, s, l, c) => window.__calls.push(['JS_ERROR', m + ' @' + l + ':' + c]);
+window.addEventListener('unhandledrejection', (e) =>
+  window.__calls.push(['UNHANDLED', String((e.reason && e.reason.message) || e.reason)]));
+</script>
+<script src="app.js"></script>
+<script>
+setTimeout(async () => {
+  const out = [];
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const $ = (s) => document.querySelector(s);
+
+  // ① 槽位是否显示了数量
+  const slots = document.querySelectorAll('.slot');
+  out.push('槽位数 = ' + slots.length);
+  slots.forEach((s) => {
+    const b = s.querySelector('.slot-body b').textContent;
+    const c = s.querySelector('.slot-count').textContent;
+    out.push(`  ${b}: has=${s.classList.contains('has')} 徽章="${c}"`);
+  });
+
+  // ② 点徽章能不能打开管理面板
+  out.push('');
+  const badge2 = document.querySelector('.slot[data-cat="模板"] .slot-count');
+  out.push('② 点「模板」的徽章…');
+  badge2.click();
+  await sleep(300);
+  const drawer = document.querySelector('#drawer');
+  const rows = document.querySelectorAll('#drawerBody .fm-row');
+  out.push('  抽屉打开: ' + (!drawer.classList.contains('hidden') ? '✓' : '✗'));
+  out.push('  标题: ' + document.querySelector('#drawerTitle').textContent);
+  out.push('  列出 ' + rows.length + ' 个文件: ' + Array.from(rows).map((r) => r.querySelector('.fm-name').textContent).join(', '));
+
+  // ③ 点删除
+  out.push('');
+  out.push('③ 删第一个文件…');
+  const del = document.querySelector('#drawerBody .fm-del');
+  if (!del) out.push('  ✗ 没有删除按钮');
+  else {
+    del.click();
+    await sleep(400);
+    const removed = window.__calls.filter((c) => c[0] === 'input.remove');
+    out.push('  调用了 input.remove: ' + (removed.length ? '✓ ' + JSON.stringify(removed[0].slice(1)) : '✗'));
+    out.push('  剩余文件数: ' + (window.__store['模板'] || []).length);
+    const rows2 = document.querySelectorAll('#drawerBody .fm-row');
+    out.push('  面板刷新后剩 ' + rows2.length + ' 行');
+    const badge2 = document.querySelector('.slot[data-cat="模板"] .slot-count').textContent;
+    out.push('  槽位徽章更新为: "' + badge2 + '"');
+  }
+
+  // ④ 关掉抽屉
+  document.querySelector('#btnDrawerClose').click();
+  await sleep(150);
+
+  // ⑤ 点「有材料」的槽位本体 → 应该开管理面板（不是选文件）
+  out.push('');
+  out.push('⑤ 点「赛题数据」槽位本体（有 1 个文件）…');
+  let before = window.__calls.length;
+  document.querySelector('.slot[data-cat="数据"]').click();
+  await sleep(300);
+  let picked = window.__calls.slice(before).filter((c) => c[0] === 'input.pick');
+  let drawer2 = document.querySelector('#drawer');
+  out.push('  打开了管理面板: ' + (!drawer2.classList.contains('hidden') ? '✓' : '✗'));
+  out.push('  没有误触选文件框: ' + (picked.length === 0 ? '✓' : '✗'));
+  out.push('  有「＋ 继续添加」按钮: ' + (document.querySelector('#fmAdd') ? '✓' : '✗'));
+  document.querySelector('#btnDrawerClose').click();
+  await sleep(150);
+
+  // ⑥ 点「空槽位」→ 应该走选文件
+  out.push('');
+  out.push('⑥ 点空槽位（先把「规范」清空）…');
+  window.__store['规范'] = [];
+  // 触发一次刷新
+  document.querySelector('.slot[data-cat="规范"]').classList.remove('has');
+  before = window.__calls.length;
+  document.querySelector('.slot[data-cat="规范"]').click();
+  await sleep(250);
+  picked = window.__calls.slice(before).filter((c) => c[0] === 'input.pick');
+  out.push('  触发 input.pick: ' + (picked.length ? '✓ ' + JSON.stringify(picked[0].slice(1)) : '✗'));
+
+  // ⑦ 徽章里有垃圾桶图标
+  out.push('');
+  const badge3 = document.querySelector('.slot[data-cat="模板"] .slot-count');
+  out.push('⑦ 徽章含图标: ' + (badge3.querySelector('svg') ? '✓' : '✗'));
+  out.push('  徽章文本: "' + badge3.textContent.trim() + '"');
+
+  // ⑧ 槽位 title 有操作提示
+  out.push('');
+  const t = document.querySelector('.slot[data-cat="模板"]').title;
+  out.push('⑧ 悬停提示含「点击管理」: ' + (t.includes('点击管理') ? '✓' : '✗'));
+
+  const errs = window.__calls.filter((c) => c[0] === 'JS_ERROR' || c[0] === 'UNHANDLED');
+  out.push('');
+  out.push('JS 错误: ' + (errs.length ? '✗ ' + JSON.stringify(errs) : '✓ 无'));
+
+  const pre = document.createElement('pre');
+  pre.id = 'testout';
+  pre.textContent = out.join('\n');
+  document.body.appendChild(pre);
+}, 1200);
+</script>
+</body>
+</html>

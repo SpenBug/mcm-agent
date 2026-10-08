@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<title>预览 · Token 仪表盘</title>
+<link rel="stylesheet" href="styles.css" />
+<style>html,body{height:100%}.app{height:100vh}</style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="logo">∑</span>
+        <div class="brand-text"><h1>数模工坊</h1><p class="sub">C:\Users\92182\Documents\数模工坊工作区</p></div></div>
+      <div class="topbar-actions">
+        <span class="badge on">deepseek-chat</span>
+        <button class="btn ghost">☾</button><button class="btn ghost">工作区</button>
+        <button class="btn ghost">运行环境</button><button class="btn primary">设置</button>
+      </div>
+    </header>
+    <aside class="sidebar">
+      <section class="side-block"><div class="side-head"><span>会话</span><button class="icon-btn">＋</button></div>
+        <ul class="session-list"><li class="session-item active"><span class="name">新会话</span><span class="del">✕</span></li></ul></section>
+      <section class="side-block grow"><div class="side-head"><span>工作区文件</span><button class="icon-btn">⟳</button></div>
+        <ul class="file-tree">
+          <li class="tree-row dir"><span class="ic">▸</span><span class="nm">code</span></li>
+          <li class="tree-row dir"><span class="ic">▸</span><span class="nm">figures</span></li>
+          <li class="tree-row dir"><span class="ic">▸</span><span class="nm">input</span></li>
+          <li class="tree-row dir"><span class="ic">▸</span><span class="nm">reports</span></li>
+          <li class="tree-row dir"><span class="ic">▸</span><span class="nm">results</span></li>
+        </ul></section>
+    </aside>
+    <main class="chat">
+      <div class="messages">
+        <div class="msg assistant"><div class="avatar">∑</div>
+          <div class="msg-col">
+            <div class="bubble">材料清点完了。赛题 1 份、规范 1 份、模板 2 份、数据 1 份，四类齐全。</div>
+            <div class="think"><div class="think-head"><span class="caret">▸</span>
+              <span class="think-title">思考过程</span><span class="think-meta">思考 · 6 步 · 全部完成</span></div>
+              <div class="think-body"></div></div>
+          </div></div>
+        <div class="turn-status done">本轮已完成</div>
+      </div>
+      <div class="composer">
+        <textarea rows="3" placeholder="描述你的题目或任务…"></textarea>
+        <div class="composer-bar">
+          <span class="hint"></span>
+          <button class="token-bar" type="button">
+            <span class="tb-item">↑ <b>48.2K</b></span>
+            <span class="tb-item">↓ <b>12.6K</b></span>
+            <span class="tb-item">Σ <b>60.8K</b></span>
+            <span class="tb-cache good">缓存 72%</span>
+            <span class="tb-more">仪表盘</span>
+          </button>
+          <div class="composer-btns"><button class="btn primary">发送</button></div>
+        </div>
+      </div>
+    </main>
+  </div>
+  <div class="mask"></div>
+  <aside class="drawer">
+    <div class="drawer-head"><h2>Token 用量</h2><button class="icon-btn">✕</button></div>
+    <div class="drawer-body">
+      <div class="tk-cards">
+        <div class="tk-card"><span class="tk-k">输入 Token</span><span class="tk-v">48,210</span><span class="tk-sub">发给模型的上下文</span></div>
+        <div class="tk-card"><span class="tk-k">输出 Token</span><span class="tk-v">12,640</span><span class="tk-sub">模型生成的内容</span></div>
+        <div class="tk-card accent"><span class="tk-k">合计</span><span class="tk-v">60,850</span><span class="tk-sub">14 轮对话</span></div>
+        <div class="tk-card"><span class="tk-k">缓存命中率</span><span class="tk-v">72.4%</span><span class="tk-sub">命中 34.9K</span></div>
+      </div>
+      <div class="tk-bar"><span class="tk-hit" style="width:72.40%"></span><span class="tk-miss" style="width:27.60%"></span></div>
+      <div class="tk-legend">
+        <span><i class="dot hit"></i>命中 34,912</span>
+        <span><i class="dot miss"></i>未命中 13,298</span>
+      </div>
+      <h3 class="tk-h3">按轮次</h3>
+      <table class="tk-table">
+        <thead><tr><th>轮</th><th>输入</th><th>输出</th><th>缓存命中</th><th>命中率</th></tr></thead>
+        <tbody>
+          <tr><td class="num">1</td><td class="num">3,120</td><td class="num">640</td><td class="num">1,024</td><td class="num">33%</td></tr>
+          <tr><td class="num">2</td><td class="num">3,480</td><td class="num">820</td><td class="num">2,310</td><td class="num">66%</td></tr>
+          <tr><td class="num">3</td><td class="num">4,050</td><td class="num">1,130</td><td class="num">3,290</td><td class="num">81%</td></tr>
+          <tr><td class="num">4</td><td class="num">4,610</td><td class="num">960</td><td class="num">4,010</td><td class="num">87%</td></tr>
+          <tr><td class="num">5</td><td class="num">5,240</td><td class="num">1,420</td><td class="num">4,680</td><td class="num">89%</td></tr>
+          <tr><td class="num">…</td><td class="num">…</td><td class="num">…</td><td class="num">…</td><td class="num">…</td></tr>
+        </tbody>
+      </table>
+      <div class="fm-actions">
+        <button class="btn sm" type="button">清零统计</button>
+        <span class="fm-hint">统计只针对当前会话，切换会话会各自计数。</span>
+      </div>
+    </div>
+  </aside>
+</body>
+</html>

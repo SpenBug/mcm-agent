@@ -19,6 +19,8 @@ const SKILLS_ROOT = path.join(__dirname, '..', 'resources', 'skills');
 
 let callCount = 0;
 const seenRequests = [];
+// 'normal' = 三轮收敛脚本；'abort' = 每轮都发两个工具调用，用来测「跑到工具中途被停止」
+let phase = 'normal';
 
 function sse(res, obj) {
   res.write(`data: ${JSON.stringify(obj)}\n\n`);
@@ -42,6 +44,26 @@ const server = http.createServer((req, res) => {
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
     });
+
+    if (phase === 'abort') {
+      // 一轮两个工具调用：第一个跑完就被用户按停止，第二个永远不会执行
+      sse(res, {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, id: 'call_x1', type: 'function', function: { name: 'write_file', arguments: '{"path":"out/a.txt","content":"a"}' } },
+                { index: 1, id: 'call_x2', type: 'function', function: { name: 'list_files', arguments: '{"pattern":"out/*"}' } },
+              ],
+            },
+          },
+        ],
+      });
+      sse(res, { choices: [{ delta: {}, finish_reason: 'tool_calls' }] });
+      res.write('data: [DONE]\n\n');
+      res.end();
+      return;
+    }
 
     if (callCount === 1) {
       // 第一轮：把 tool_calls 的 arguments 拆成 3 片，验证拼接
@@ -175,6 +197,46 @@ async function main() {
 
   const finalMsg = result.messages[result.messages.length - 1];
   push('最终返回文本', finalMsg?.role === 'assistant' && String(finalMsg.content).includes('完成'), String(finalMsg?.content).slice(0, 40));
+
+  /* ---------- 第四轮：工具跑到一半被「停止」，历史必须仍然合法 ---------- */
+  // 结构合法性 = 每条带 tool_calls 的 assistant 之后，每个 call id 都能找到同 id 的 tool 消息。
+  // 缺一条，这份历史（以及落盘的会话文件）回灌给服务端就是 400，会话再也发不出消息。
+  const validateHistory = (msgs) => {
+    const answered = new Set(msgs.filter((m) => m.role === 'tool').map((m) => m.tool_call_id));
+    const orphans = [];
+    for (const m of msgs.filter((x) => x.role === 'assistant' && Array.isArray(x.tool_calls))) {
+      for (const c of m.tool_calls) if (!answered.has(c.id)) orphans.push(c.id);
+    }
+    return orphans;
+  };
+
+  phase = 'abort';
+  callCount = 0;
+  const ctrl = new AbortController();
+  let abortedOnce = false;
+  const abortResult = await runAgent({
+    config: { ...config, maxIterations: 5 },
+    workspace: WORKSPACE,
+    skillsRoot: SKILLS_ROOT,
+    messages: [
+      { role: 'system', content: '你是一个测试助手。' },
+      { role: 'user', content: '写 a.txt 再列目录' },
+    ],
+    emit: (ev) => {
+      // 第一个工具结果一回来就按停止 —— 第二个工具永远不会跑
+      if (ev.type === 'tool_result' && !abortedOnce) {
+        abortedOnce = true;
+        ctrl.abort();
+      }
+    },
+    signal: ctrl.signal,
+    pythonPath: 'python',
+  });
+
+  push('中断场景：确实走了 aborted', abortResult.aborted === true, '');
+  push('中断场景：assistant 带 tool_calls', Boolean((abortResult.messages || []).find((m) => m.role === 'assistant' && m.tool_calls)), '');
+  const orphans = validateHistory(abortResult.messages || []);
+  push('中断场景：无孤儿 tool_calls（可继续对话）', orphans.length === 0, orphans.join(',') || '每条 tool_call 都有应答');
 
   /* ---------- 输出 ---------- */
   console.log('');

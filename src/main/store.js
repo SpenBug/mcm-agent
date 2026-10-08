@@ -28,6 +28,7 @@ const DEFAULT_CONFIG = {
   maxIterations: 80,
   pythonPath: '',
   lastProject: '',
+  theme: 'dark',      // 由渲染进程写入，主进程用它决定窗口底色（避免启动闪色）
 };
 
 let cache = null;

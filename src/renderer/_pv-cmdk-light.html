@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <!-- 预览页：CSP 已放宽 -->
+  <title>数模工坊</title>
+  <!-- 主题初始化必须在样式表之前，否则会闪一帧默认主题 -->
+  <script src="theme.js"></script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- 顶栏 -->
+    <header class="topbar">
+      <div class="brand">
+        <span class="logo">∑</span>
+        <div class="brand-text">
+          <h1>数模工坊</h1>
+          <p class="sub" id="wsPath" title="当前工作区">未设置工作区</p>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <span class="badge" id="modelBadge">未配置模型</span>
+        <!-- 命令面板入口：做成搜索框的样子，鼠标用户能发现、键盘用户直接 Ctrl+K -->
+        <button class="cmdk-trigger" id="btnCmdk" type="button" title="打开命令面板">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          <span>搜索命令…</span>
+          <kbd>Ctrl K</kbd>
+        </button>
+        <button id="btnTheme" class="btn ghost" title="切换主题">☾</button>
+        <button id="btnWorkspace" class="btn ghost">工作区</button>
+        <button id="btnEnv" class="btn ghost">运行环境</button>
+        <button id="btnSettings" class="btn primary">设置</button>
+      </div>
+    </header>
+
+    <!-- 左侧栏 -->
+    <aside class="sidebar">
+      <section class="side-block">
+        <div class="side-head">
+          <span>会话</span>
+          <button id="btnNewSession" class="icon-btn" title="新建会话">＋</button>
+        </div>
+        <ul id="sessionList" class="session-list"></ul>
+      </section>
+      <section class="side-block grow">
+        <div class="side-head">
+          <span>工作区文件</span>
+          <button id="btnRefreshFiles" class="icon-btn" title="刷新">⟳</button>
+        </div>
+        <ul id="fileTree" class="file-tree"></ul>
+      </section>
+    </aside>
+
+    <!-- 对话主区 -->
+    <main class="chat">
+      <div id="messages" class="messages">
+        <!-- 静态占位：app.js 的 buildEmptyState() 会接管它。
+             这里只留品牌区，避免 JS 执行前闪一下空白或旧内容。 -->
+        <div class="empty-state" id="emptyState">
+          <div class="es-brand">
+            <span class="es-mark">∑</span>
+            <h2>数模工坊</h2>
+            <p class="es-lede">四类材料分别提交，剩下的我来。</p>
+          </div>
+          <div class="slots" id="slots"></div>
+        </div>
+      </div>
+
+      <div class="composer">
+        <textarea id="input" rows="3"
+          placeholder="描述你的题目或任务，例如：把 CUMCM 2024 A 题做完整流程，论文出 Word 版"></textarea>
+        <div class="composer-bar">
+          <span class="hint" id="statusHint"></span>
+          <!-- Token 读数：常驻显示，点开是完整仪表盘 -->
+          <button class="token-bar hidden" id="tokenBar" type="button" title="查看 Token 用量仪表盘"></button>
+          <div class="composer-btns">
+            <button id="btnStop" class="btn danger hidden">停止</button>
+            <button id="btnSend" class="btn primary">发送</button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- 右侧预览 -->
+    <aside class="preview hidden" id="previewPane">
+      <div class="preview-head">
+        <span id="previewTitle">预览</span>
+        <div>
+          <button id="btnPreviewOpen" class="icon-btn" title="用系统程序打开">↗</button>
+          <button id="btnPreviewClose" class="icon-btn" title="关闭">✕</button>
+        </div>
+      </div>
+      <div class="preview-body" id="previewBody"></div>
+    </aside>
+  </div>
+
+  <!-- 设置抽屉 -->
+  <div class="mask hidden" id="mask"></div>
+  <aside class="drawer hidden" id="drawer">
+    <div class="drawer-head">
+      <h2 id="drawerTitle">设置</h2>
+      <button class="icon-btn" id="btnDrawerClose">✕</button>
+    </div>
+      <div class="drawer-body" id="drawerBody"></div>
+    </aside>
+
+    <!-- 命令面板（Ctrl+K） -->
+    <div class="cmdk-mask hidden" id="cmdkMask"></div>
+    <div class="cmdk hidden" id="cmdk" role="dialog" aria-modal="true" aria-label="命令面板">
+      <div class="cmdk-head">
+        <svg class="cmdk-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <input id="cmdkInput" type="text" placeholder="搜索命令、会话、操作…" autocomplete="off" spellcheck="false" />
+        <kbd>Esc</kbd>
+      </div>
+      <div class="cmdk-list" id="cmdkList"></div>
+      <div class="cmdk-foot">
+        <span><kbd>↑</kbd><kbd>↓</kbd> 选择</span>
+        <span><kbd>↵</kbd> 执行</span>
+        <span><kbd>Esc</kbd> 关闭</span>
+      </div>
+    </div>
+
+
+<script>
+window.__calls = [];
+const rec = (n) => (...a) => { window.__calls.push([n, ...a]); return Promise.resolve({}); };
+window.__store = {
+  '赛题': [{ name: 'C题.pdf', kind: 'file', bytes: 708608 }],
+  '规范': [{ name: '格式规范.docx', kind: 'file', bytes: 45056 }],
+  '模板': [{ name: 'cumcmthesis.cls', kind: 'file', bytes: 32000 },
+           { name: 'cumcm2026.sty', kind: 'file', bytes: 8000 }],
+  '数据': [{ name: '附件1.xlsx', kind: 'file', bytes: 120000 }],
+};
+window.mcm = {
+  config: { get: () => Promise.resolve({ config: { provider:'deepseek', model:'deepseek-chat',
+              workspace:'C:\\Users\\92182\\Documents\\数模工坊工作区', hasApiKey: true }, skillsRoot:'S' }),
+            save: rec('config.save'), test: rec('config.test') },
+  workspace: { ensure: () => Promise.resolve('C:\\Users\\92182\\Documents\\数模工坊工作区'),
+               choose: () => Promise.resolve(null),
+               list: () => Promise.resolve([{ name:'input', kind:'dir' }, { name:'code', kind:'dir' },
+                 { name:'figures', kind:'dir' }, { name:'results', kind:'dir' }, { name:'reports', kind:'dir' }]),
+               openPath: rec('w.openPath'), reveal: rec('w.reveal'),
+               read: () => Promise.resolve(''), dataUrl: () => Promise.resolve('') },
+  session: { list: () => Promise.resolve([{ id:'s1', title:'CUMCM 2024 A 题' },
+             { id:'s2', title:'华为杯 2025 B 题' }, { id:'s3', title:'画竞赛图' }]),
+             load: () => Promise.resolve(null), save: rec('s.save'), remove: rec('s.remove') },
+  input: { pathForFile: () => '', import: rec('input.import'), pick: rec('input.pick'),
+           list: () => Promise.resolve({ dir:'input', cats: [
+             { key:'赛题', label:'竞赛赛题', hint:'', files: window.__store['赛题'] },
+             { key:'规范', label:'格式规范', hint:'', files: window.__store['规范'] },
+             { key:'模板', label:'论文模板', hint:'', files: window.__store['模板'] },
+             { key:'数据', label:'赛题数据', hint:'', files: window.__store['数据'] } ] }),
+           remove: rec('input.remove'), openDir: rec('input.openDir') },
+  python: { status: () => Promise.resolve({ ok:true, version:'3.11.9' }), setup: rec('p.setup'), setPath: rec('p.setPath') },
+  drawio: { status: () => Promise.resolve({ ok:true }), export: rec('d.export') },
+  chat: {
+    // ⚠️ 必须挂起 —— 立刻 resolve 的话 send() 当场结束，
+    // 后面注入的事件全落在"发送已完成"之后，DOM 上看不到任何东西
+    send: (payload) => {
+      window.__calls.push(['chat.send']);
+      return new Promise((res) => { window.__resolveSend = () => res({ ok: true, messages: payload.messages }); });
+    },
+    abort: rec('chat.abort'), onEvent: (cb) => { window.__handler = cb; },
+  },
+};
+window.confirm = () => true;
+window.onerror = (m, s, l, c) => window.__calls.push(['JS_ERROR', m + ' @' + l + ':' + c]);
+</script>
+    <script src="app.js"></script>
+<script>
+document.documentElement.dataset.theme = 'light';
+setTimeout(() => { window.__mcmTest && window.__mcmTest.openCmdk(); }, 400);
+</script>
+  </body>
+  </html>

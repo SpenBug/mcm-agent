@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<title>集成测试 · 消息顺序</title>
+<link rel="stylesheet" href="styles.css" />
+<style>html,body{height:100%}.app{height:100vh}</style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand"><span class="logo">∑</span>
+        <div class="brand-text"><h1>数模工坊</h1><p class="sub" id="wsPath">测试</p></div></div>
+      <div class="topbar-actions">
+        <span class="badge" id="modelBadge">测试</span>
+        <button id="btnTheme" class="btn ghost">☾</button>
+        <button id="btnWorkspace" class="btn ghost">工作区</button>
+        <button id="btnEnv" class="btn ghost">运行环境</button>
+        <button id="btnSettings" class="btn primary">设置</button>
+      </div>
+    </header>
+    <aside class="sidebar">
+      <section class="side-block"><div class="side-head"><span>会话</span><button id="btnNewSession" class="icon-btn">＋</button></div>
+        <ul id="sessionList" class="session-list"></ul></section>
+      <section class="side-block grow"><div class="side-head"><span>工作区文件</span><button id="btnRefreshFiles" class="icon-btn">⟳</button></div>
+        <ul id="fileTree" class="file-tree"></ul></section>
+    </aside>
+    <main class="chat">
+      <div id="messages" class="messages">
+        <div class="empty-state" id="emptyState">
+          <div class="es-brand"><span class="es-mark">∑</span><h2>数模工坊</h2>
+            <p class="es-lede">四类材料分别提交，剩下的我来。</p></div>
+          <div class="slots" id="slots"></div>
+        </div>
+      </div>
+      <div class="composer">
+        <textarea id="input" rows="3"></textarea>
+        <div class="composer-bar"><span class="hint" id="statusHint"></span>
+          <button class="token-bar hidden" id="tokenBar" type="button"></button>
+          <div class="composer-btns"><button id="btnStop" class="btn danger hidden">停止</button>
+            <button id="btnSend" class="btn primary">发送</button></div></div>
+      </div>
+    </main>
+    <aside class="preview hidden" id="previewPane">
+      <div class="preview-head"><span id="previewTitle">预览</span>
+        <div><button id="btnPreviewOpen" class="icon-btn">↗</button><button id="btnPreviewClose" class="icon-btn">✕</button></div></div>
+      <div class="preview-body" id="previewBody"></div>
+    </aside>
+  </div>
+  <div class="mask hidden" id="mask"></div>
+  <aside class="drawer hidden" id="drawer">
+    <div class="drawer-head"><h2 id="drawerTitle">设置</h2><button class="icon-btn" id="btnDrawerClose">✕</button></div>
+    <div class="drawer-body" id="drawerBody"></div>
+  </aside>
+
+<script>
+window.__calls = [];
+window.__handler = null;
+const rec = (n) => (...a) => { window.__calls.push([n, ...a]); return Promise.resolve({}); };
+window.mcm = {
+  config: { get: () => Promise.resolve({ config: { provider:'deepseek', model:'t', workspace:'C:\\t', hasApiKey: true }, skillsRoot:'S' }),
+            save: rec('config.save'), test: rec('config.test') },
+  workspace: { ensure: () => Promise.resolve('C:\\t'), choose: () => Promise.resolve(null),
+               list: () => Promise.resolve([]), openPath: rec('w.openPath'), reveal: rec('w.reveal'),
+               read: () => Promise.resolve(''), dataUrl: () => Promise.resolve('') },
+  session: { list: () => Promise.resolve([]), load: () => Promise.resolve(null), save: rec('s.save'), remove: rec('s.remove') },
+  input: { pathForFile: () => '', import: rec('input.import'), pick: rec('input.pick'),
+           list: () => Promise.resolve({ dir:'input', cats: [] }), remove: rec('input.remove'), openDir: rec('input.openDir') },
+  python: { status: () => Promise.resolve({ ok:true }), setup: rec('p.setup'), setPath: rec('p.setPath') },
+  drawio: { status: () => Promise.resolve({ ok:true }), export: rec('d.export') },
+  // 捕获事件处理器；send 返回一个可控的挂起 Promise，好在中途注入事件。
+  // 回显「当前 state.messages」而不是传入的 payload —— 真实主进程返回的是
+  // 跑完之后累积的完整 convo（含 assistant / tool），不是运行前的快照。
+  chat: {
+    send: (payload) => {
+      window.__calls.push(['chat.send', JSON.parse(JSON.stringify(payload.messages || []))]);
+      return new Promise((res) => {
+        window.__resolveSend = () =>
+          res({ ok: true, messages: window.__mcmTest.state.messages.slice() });
+      });
+    },
+    abort: rec('chat.abort'),
+    onEvent: (cb) => { window.__handler = cb; },
+  },
+};
+window.onerror = (m, s, l, c) => window.__calls.push(['JS_ERROR', m + ' @' + l + ':' + c]);
+window.addEventListener('unhandledrejection', (e) =>
+  window.__calls.push(['UNHANDLED', String((e.reason && e.reason.message) || e.reason)]));
+</script>
+<script src="app.js"></script>
+<script>
+setTimeout(async () => {
+  const out = [];
+  const H = window.__handler;
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  if (!H) { out.push('✗ 没拿到事件处理器'); }
+  else {
+    // ① 先发一条，让 assistant 占位元素存在（事件只在发送过程中才有意义）
+    document.querySelector('#input').value = '材料我分好了，走完整五步';
+    document.querySelector('#btnSend').click();
+    await sleep(150);
+
+    // ② 在发送过程中注入一轮完整的事件
+    H({ type: 'turn_start', iteration: 1 });
+    H({ type: 'reasoning', text: '先看看材料齐不齐。' });
+    H({ type: 'delta', text: '我先清点一下材料。' });
+    H({ type: 'tool_start', id: 'c1', name: 'run_command', args: { command: 'ls input' } });
+    H({ type: 'tool_result', id: 'c1', name: 'run_command', ok: true, output: '退出码：0\n赛题/', elapsed: 10 });
+    H({ type: 'tool_start', id: 'c2', name: 'read_file', args: { path: 'a.md' } });
+    H({ type: 'tool_result', id: 'c2', name: 'read_file', ok: true, output: '内容', elapsed: 5 });
+    H({ type: 'turn_end', usage: { prompt: 1000, completion: 200, total: 1200, cached: 680, missed: 320, hasCacheInfo: true } });
+    H({ type: 'turn_start', iteration: 2 });
+    H({ type: 'delta', text: '清点完了，缺规范。' });
+    H({ type: 'turn_end', usage: { prompt: 1500, completion: 100, total: 1600, cached: 1200, missed: 300, hasCacheInfo: true } });
+    H({ type: 'done' });
+    await sleep(150);
+
+    // ③ 直接读内部状态（通过 __test 钩子）—— 光看 DOM 看不出消息顺序
+    const st = window.__mcmTest && window.__mcmTest.state;
+    if (!st) out.push('✗ 没拿到 __mcmTest 钩子（URL 要带 ?__test）');
+    else {
+      const msgs = st.messages;
+      out.push('state.messages 共 ' + msgs.length + ' 条：');
+      msgs.forEach((m, i) => {
+        const extra = m.tool_calls ? ` tool_calls=[${m.tool_calls.map((t) => t.function.name).join(',')}]` : '';
+        const rc = m.reasoning ? ` reasoning(${m.reasoning.length}字)` : '';
+        const tcid = m.tool_call_id ? ` -> ${m.tool_call_id}` : '';
+        out.push(`  ${i + 1}. ${m.role}${extra}${rc}${tcid}`);
+      });
+      out.push('');
+      const roles = msgs.map((m) => m.role);
+      const a1 = msgs.find((m) => m.role === 'assistant' && m.tool_calls);
+      out.push('① 有带 tool_calls 的 assistant: ' + (a1 ? '✓' : '✗'));
+      out.push('② tool_calls 集齐 2 个: ' + (a1 && a1.tool_calls.length === 2 ? '✓' : '✗ 实际 ' + (a1 ? a1.tool_calls.length : 0)));
+      out.push('③ reasoning 被带上: ' + (a1 && a1.reasoning ? '✓' : '✗'));
+      const ia = roles.indexOf('assistant');
+      const it = roles.indexOf('tool');
+      out.push('④ assistant 排在 tool 之前: ' + (ia >= 0 && it >= 0 && ia < it ? '✓' : '✗'));
+      const lastTool = roles.lastIndexOf('tool');
+      out.push('⑤ 两个 tool 都跟在 assistant 后: ' + (lastTool > ia ? '✓' : '✗'));
+      // ⚠️ 必须判 .length —— 空数组是 truthy。第 2 轮的 assistant 创建时带
+      // `tool_calls: []` 当占位（表示"这条能承载工具调用"），只判 m.tool_calls 会数成 2 条。
+      out.push('⑥ 只有一个带 tool_calls 的 assistant（没重复入列）: ' +
+        (msgs.filter((m) => m.role === 'assistant' && m.tool_calls && m.tool_calls.length).length === 1 ? '✓' : '✗'));
+      out.push('⑦ 工具结果数 = 2: ' + (msgs.filter((m) => m.role === 'tool').length === 2 ? '✓' : '✗'));
+    }
+
+    if (window.__resolveSend) window.__resolveSend();
+    await sleep(200);
+
+    // ④ DOM 检查：结束提示行、折叠块
+    const ts = document.querySelectorAll('.turn-status');
+    out.push('');
+    out.push('⑧ 结束提示行存在: ' + (ts.length ? '✓ ' + ts[0].textContent : '✗'));
+
+    // ---- Token 仪表盘 ----
+    out.push('');
+    out.push('--- Token 仪表盘 ---');
+    const bar = document.querySelector('#tokenBar');
+    out.push('⑪ 读数条出现: ' + (bar && !bar.classList.contains('hidden') ? '✓' : '✗'));
+    out.push('    内容: ' + (bar ? bar.textContent.replace(/\s+/g, ' ').trim() : ''));
+    // 期望：输入 1000+1500=2500 → 2.50K；输出 200+100=300；合计 2800 → 2.80K
+    // 缓存命中 680+1200=1880，未命中 320+300=620，命中率 1880/2500 = 75.2%
+    out.push('⑫ 输入合计正确: ' + (bar && bar.textContent.includes('2.50K') ? '✓' : '✗ 期望 2.50K'));
+    out.push('⑬ 输出合计正确: ' + (bar && bar.textContent.includes('300') ? '✓' : '✗ 期望 300'));
+    out.push('⑭ 命中率正确: ' + (bar && bar.textContent.includes('75%') ? '✓' : '✗ 期望 75%'));
+
+    // 打开仪表盘
+    bar.click();
+    await sleep(300);
+    const drawer = document.querySelector('#drawer');
+    out.push('⑮ 点读数开仪表盘: ' + (!drawer.classList.contains('hidden') ? '✓' : '✗'));
+    const cards = document.querySelectorAll('#drawerBody .tk-card');
+    out.push('⑯ 统计卡片 4 张: ' + (cards.length === 4 ? '✓' : '✗ 实际 ' + cards.length));
+    const vals = Array.from(cards).map((c) => c.querySelector('.tk-k').textContent + '=' + c.querySelector('.tk-v').textContent);
+    out.push('    ' + vals.join('  '));
+    out.push('⑰ 命中率卡片 75.2%: ' + (drawer.textContent.includes('75.2%') ? '✓' : '✗'));
+    const hitBar = document.querySelector('#drawerBody .tk-hit');
+    out.push('⑱ 命中条宽度 75.2%: ' + (hitBar && Math.abs(parseFloat(hitBar.style.width) - 75.2) < 0.5 ? '✓' : '✗ 实际 ' + (hitBar ? hitBar.style.width : 'n/a')));
+    const trows = document.querySelectorAll('#drawerBody .tk-table tbody tr');
+    out.push('⑲ 按轮次表 2 行: ' + (trows.length === 2 ? '✓' : '✗ 实际 ' + trows.length));
+    document.querySelector('#btnDrawerClose').click();
+    await sleep(150);
+    const think = document.querySelector('.think');
+    out.push('⑨ 思考过程折叠块存在: ' + (think ? '✓ ' + think.querySelector('.think-meta').textContent : '✗'));
+    out.push('⑩ 结束后折叠块是收起的: ' +
+      (think && !think.classList.contains('open') ? '✓' : '✗'));
+  }
+  // ---- describeStep：把工具调用翻成人话 ----
+  out.push('');
+  out.push('--- 步骤标题翻译 ---');
+  const D = window.__mcmTest && window.__mcmTest.describeStep;
+  if (!D) out.push('✗ 没拿到 describeStep');
+  else {
+    const cases = [
+      ['run_command', { command: 'cd C:/ws && python skills/mcm-tools/scripts/mcm_io.py pdf "input/赛题/C题.pdf" --pages 1-3' }, '读取 PDF · C题.pdf'],
+      ['run_command', { command: 'python skills/mcm-tools/scripts/mcm_io.py xlsx "input/数据/附件1.xlsx" --head 15' }, '读取表格 · 附件1.xlsx'],
+      ['run_command', { command: 'python skills/mcm-tools/scripts/mcm_io.py info input/' }, '查看目录'],
+      ['run_command', { command: 'cd C:/ws && tar -xzf input/赛题/C题.zip -C input/数据/' }, '解压'],
+      ['run_command', { command: 'latexmk -xelatex 论文.tex' }, '编译 LaTeX'],
+      ['read_file', { path: 'reports/规则卡.md' }, '读取 规则卡.md'],
+      ['write_file', { path: 'code/preprocess.py' }, '写入 preprocess.py'],
+      ['list_files', { root: 'input/数据' }, '列出 数据'],
+      ['run_python', { script: 'code/solve.py' }, '运行脚本 solve.py'],
+    ];
+    let bad = 0;
+    for (const [name, args, want] of cases) {
+      const got = D(name, args);
+      const ok = got === want;
+      if (!ok) bad++;
+      out.push((ok ? '  ✓ ' : '  ✗ ') + name + ' → "' + got + '"' + (ok ? '' : '（期望 "' + want + '"）'));
+    }
+    out.push('步骤标题: ' + (bad ? '✗ ' + bad + ' 项不符' : '✓ 全部符合'));
+  }
+
+  // ---- 等待计时 + 超时重试卡片 ----
+  out.push('');
+  out.push('--- 等待计时 & 超时重试 ---');
+  H({ type: 'turn_start', iteration: 9 });
+  await sleep(120);
+  const hint = document.querySelector('#statusHint');
+  const hintTxt = hint ? hint.textContent : '';
+  out.push('⑳ 状态栏显示等待计时: ' + (/等待模型响应 · 已 \d+s/.test(hintTxt) ? '✓ ' + hintTxt : '✗ "' + hintTxt + '"'));
+
+  // 模拟超时错误
+  H({ type: 'error', message: '流式响应已 300 秒没有任何数据，判定连接已断，已中断本次请求。' });
+  await sleep(200);
+  const card = document.querySelector('.retry-card');
+  out.push('㉑ 超时后出现重试卡片: ' + (card ? '✓' : '✗'));
+  if (card) {
+    out.push('    标题: ' + card.querySelector('.rc-head span').textContent);
+    const btns = [...card.querySelectorAll('.rc-acts button')].map((b) => b.textContent.trim());
+    out.push('㉒ 两个操作按钮: ' + (btns.length === 2 ? '✓ ' + btns.join(' / ') : '✗ ' + JSON.stringify(btns)));
+  }
+  out.push('㉓ 超时不再只写一行状态: ' + (hint && hint.textContent.includes('已') === false ? '✓' : '（状态栏已清）'));
+
+  // 普通错误不该给卡片
+  document.querySelectorAll('.retry-card').forEach((n) => n.remove());
+  H({ type: 'error', message: '尚未配置 API Key' });
+  await sleep(150);
+  out.push('㉔ 普通错误不给重试卡片: ' + (document.querySelector('.retry-card') ? '✗ 给了' : '✓ 没给'));
+
+  const errs = window.__calls.filter((c) => c[0] === 'JS_ERROR' || c[0] === 'UNHANDLED');
+  out.push('');
+  out.push('JS 错误: ' + (errs.length ? '✗ ' + JSON.stringify(errs) : '✓ 无'));
+  const pre = document.createElement('pre');
+  pre.id = 'testout';
+  pre.textContent = out.join('\n');
+  document.body.appendChild(pre);
+}, 1200);
+</script>
+</body>
+</html>
