@@ -1,8 +1,8 @@
 {
   "name": "mcm-agent",
-  "productName": "数模智能体",
+  "productName": "数模工坊",
   "version": "1.0.0",
-  "description": "数学建模智能体：三阶段建模流水线 + draw.io 竞赛模式出图，支持自填 API 与自选模型",
+  "description": "数模工坊：三阶段建模流水线 + draw.io 竞赛模式出图，支持自填 API 与自选模型",
   "main": "src/main/index.js",
   "author": {
     "name": "SpenBug",
@@ -22,11 +22,16 @@
     "test:tools": "node scripts/test-tools.js",
     "test:modeling": "node scripts/test-modeling.js",
     "pack": "node node_modules/electron-builder/cli.js --win --dir",
-    "dist": "node node_modules/electron-builder/cli.js --win"
+    "dist": "node node_modules/electron-builder/cli.js --win",
+    "test:license": "node scripts/license-test.js",
+    "test:license-e2e": "node scripts/license-e2e.js",
+    "issue": "node tools/issue.js",
+    "qr:crop": "python scripts/qr-crop.py",
+    "test:snapshot": "node scripts/snapshot-test.js"
   },
   "build": {
     "appId": "com.spenbug.mcm-agent",
-    "productName": "数模智能体",
+    "productName": "数模工坊",
     "directories": {
       "output": "dist",
       "buildResources": "build"
@@ -34,12 +39,23 @@
     "files": [
       "src/**/*",
       "package.json",
-      "!**/*.map"
+      "!**/*.map",
+      "!src/renderer/_*",
+      "!keys/**"
     ],
     "extraResources": [
       {
         "from": "resources/skills",
         "to": "skills"
+      },
+      {
+        "from": "resources/brand",
+        "to": "brand",
+        "filter": [
+          "**/*",
+          "!*.svg",
+          "!pay-qr.png"
+        ]
       }
     ],
     "win": {
@@ -65,10 +81,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "数模智能体"
+      "shortcutName": "数模工坊"
     },
     "portable": {
-      "artifactName": "数模智能体-便携版-${version}.exe"
+      "artifactName": "数模工坊-便携版-${version}.exe"
     }
   },
   "dependencies": {
