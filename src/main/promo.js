@@ -23,6 +23,8 @@ const { app } = require('electron');
 const store = require('./store');
 const license = require('./license');
 const paths = require('./paths');
+// 落定判定与冒烟截图共用一份实现（见 shot.js 顶部注释：同一事实不两处手抄）
+const { settleForShot } = require('./shot');
 
 const OUT_DIR = path.join(os.tmpdir(), 'mcm-promo-shots');
 // 演示工作区放个"像真的"的路径 —— 标题栏会显示它
@@ -201,12 +203,16 @@ function startMockLlm() {
 /* 截图驱动                                                           */
 /* ---------------------------------------------------------------- */
 
+/** 截图统一入口：**先落定再截**。
+ *  空态首屏有入场动画，直接 capturePage 会抓到半透明中间态（详见 settleForShot）。 */
 async function capture(win, name) {
   await sleep(400);
+  const settled = await settleForShot(win, name);
   const img = await win.webContents.capturePage();
   const abs = path.join(OUT_DIR, name);
   fs.writeFileSync(abs, img.toPNG());
-  console.log('SHOT =>', abs, `${img.getSize().width}x${img.getSize().height}`);
+  console.log('SHOT =>', abs, `${img.getSize().width}x${img.getSize().height}`,
+    `(动效：入场 ${settled.entrance} / 校验 ${settled.checked})`);
 }
 
 /** 轮询等待页面出现全部指定文本（超时抛错）。

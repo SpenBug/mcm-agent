@@ -13,6 +13,8 @@ const crypto = require('node:crypto');
 const { app } = require('electron');
 
 const { summarizeSmoke, verdictLine } = require('./smoke-verdict');
+// 截图前的"动效落定"判定与宣传截图共用一份实现，见 shot.js 顶部注释
+const { settleForShot } = require('./shot');
 
 const { getSkillsRoot, getDefaultWorkspace, getUserDataDir } = require('./paths');
 const { buildSystemPrompt } = require('./agent/prompt');
@@ -724,6 +726,12 @@ async function runSmokeBody(win, logs) {
     // 截图必须放在端到端测试之前 —— 那里会 reload 页面，之后 capturePage
     // 会因渲染状态异常报 UnknownVizError。
     // 打包后 app 目录在 asar 内不可写，截图统一落到临时目录。
+    /* ⚠️ 先等入场动效落定再截。首屏空态带约 1.9s 的入场动画，而这张图前面
+       并没有可靠的等待：空态是 renderMessages() 每次重建 DOM 时**重新挂载**的，
+       动画会随之重放 —— 所以"启动到现在已经过了很久"并不构成安全理由。
+       判据与宣传截图共用 shot.js 里的同一份实现（同一事实不两处手抄）。 */
+    const settled = await settleForShot(win, 'smoke');
+    console.log(`截图前动效：入场 ${settled.entrance} 条已结束，终态校验 ${settled.checked} 条通过`);
     const img = await win.webContents.capturePage();
     const shot = path.join(app.getPath('temp'), 'mcm-agent-smoke.png');
     fs.writeFileSync(shot, img.toPNG());
