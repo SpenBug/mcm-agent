@@ -259,6 +259,8 @@ async function runPromoShots(win) {
     pythonPath: path.join(paths.getPythonEnvDir(), 'Scripts', 'python.exe'),
   });
 
+  // 成败标记：任何一步抛错都保持 true（见 finally 的退出码）
+  let failed = true;
   try {
     // 配置是页面加载时读进去的，改完必须 reload 才生效（与 smoke 同款处理）
     win.webContents.reload();
@@ -349,6 +351,29 @@ async function runPromoShots(win) {
 
     console.log(`mock 请求数 = ${received.length}`);
     console.log('演示工作区 =>', WS);
+
+    // ── 最后一道保险：五张截图内容必须互不相同 ──
+    // 直接源于本轮教训：预览没打开时 shot3 与 shot1 是同一画面（差 18 字节），
+    // 差点把"声称展示图表预览、实际是重复图"的素材发到公开 README。
+    // 光看 preview 布尔值不够 —— 真图不同才是硬证据。
+    const shotFiles = [
+      'shot0_空工作台.png', 'shot1_分析与写文件.png', 'shot2_真实执行出图.png',
+      'shot3_文件树与图表预览.png', 'shot4_设置自选模型.png',
+    ];
+    const digests = new Map();
+    for (const f of shotFiles) {
+      const abs = path.join(OUT_DIR, f);
+      if (!fs.existsSync(abs)) throw new Error(`截图缺失：${f}`);
+      const h = crypto.createHash('sha256').update(fs.readFileSync(abs)).digest('hex');
+      if (digests.has(h)) {
+        throw new Error(`截图内容重复：${f} 与 ${digests.get(h)} 字节级相同 `
+          + '—— 说明某一步界面没真正变化（如预览没打开），这张不能用作宣传素材');
+      }
+      digests.set(h, f);
+    }
+    console.log('✓ 五张截图内容互不相同（sha256 各不同）');
+
+    failed = false; // 五张截图全部产出、预览确认真的打开了、且内容互不重复
   } finally {
     server.close();
     if (cfgBackup === null) fs.rmSync(cfgFile, { force: true });
@@ -356,7 +381,11 @@ async function runPromoShots(win) {
     if (licBackup === null) fs.rmSync(licFile, { force: true });
     else fs.writeFileSync(licFile, licBackup, 'utf8');
     store.cache = null;
-    setTimeout(() => app.exit(0), 500);
+    // ⚠️ 退出码必须反映成败：index.js 的 unhandledRejection 兜底只打日志、
+    //    不改退出码 —— 实测预览抛错那次进程照样 exit=0，
+    //    调用方（npm 脚本 / CI / 人）完全无法从退出码发现问题。
+    //    截图是"素材生产"，废图混进素材库的代价是发到公开 README 上。
+    setTimeout(() => app.exit(failed ? 1 : 0), 500);
   }
 }
 
