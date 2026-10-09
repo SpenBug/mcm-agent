@@ -56,6 +56,12 @@ function block() {
           <rect x="8" y="8" width="240" height="140" rx="56" fill="url(#lgGloss)"/>
           ${markBody({ mane: true, face: true }).split('\n').join('\n          ')}
         </symbol>
+        <!-- 单色马头：给"容器自己已有底色"的位置用（助手头像、激活页标记）。
+             用 currentColor 所以深色/浅色主题都看得见；不画五官，
+             那些位置只有 28~42px，眼睛会糊成脏点。 -->
+        <symbol id="brandMarkMono" viewBox="0 0 256 256">
+          ${markBody({ mane: true, face: false, mono: true }).split('\n').join('\n          ')}
+        </symbol>
       </defs>
     </svg>
     ${END}`;

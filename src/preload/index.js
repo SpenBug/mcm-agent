@@ -33,6 +33,10 @@ contextBridge.exposeInMainWorld('mcm', {
     load: (id) => ipcRenderer.invoke('session:load', id),
     remove: (id) => ipcRenderer.invoke('session:delete', id),
     rollback: (since) => ipcRenderer.invoke('session:rollback', { since }),
+    // LLM 生成会话标题；失败时渲染层保留本地兜底标题，不提示用户
+    title: (payload) => ipcRenderer.invoke('session:title', payload),
+    // 本地兜底标题：纯计算、瞬时返回，先把侧栏填上
+    titleLocal: (payload) => ipcRenderer.invoke('session:title-local', payload),
   },
   // 工作区快照：每轮对话前拍一张，回滚时整体还原（覆盖/新增/删除都能回去）
   snapshot: {

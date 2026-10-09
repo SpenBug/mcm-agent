@@ -13,23 +13,52 @@
  */
 
 const { spawnSync } = require('node:child_process');
+const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 const SUITES = [
   ['工具沙箱与执行器', 'scripts/test-tools.js'],
+  ['路径解析与越界防护', 'scripts/path-resolve-test.js'],
   ['Agent 循环', 'scripts/test-agent-loop.js'],
   ['授权与卡密', 'scripts/license-test.js'],
   ['赛事日历', 'scripts/competitions-test.js'],
   ['AI 使用声明', 'scripts/ai-declare-test.js'],
   ['工作区快照', 'scripts/snapshot-test.js'],
+  ['会话标题生成', 'scripts/session-title-test.js'],
+  ['输入草稿存储', 'scripts/drafts-test.js'],
+  ['引用解析（@{}）', 'scripts/refs-test.js'],
   ['改名后数据目录迁移', 'scripts/migration-test.js'],
   ['品牌标记几何', 'scripts/icon-check.js'],
   ['品牌标记与界面同源', 'scripts/sync-brand-mark.js', ['--check']],
+  ['旧品牌符号未复活', 'scripts/scrub-legacy-mark.js', ['--check']],
   ['签发器赛事选项与定价同源', 'scripts/sync-keygen-options.js', ['--check']],
   ['签发器与客户端密钥/定价一致', 'scripts/issuer-consistency-test.js'],
   ['签发器卡号与台账（keygen）', 'scripts/keygen-ledger-test.js'],
 ];
+
+/**
+ * 反向守卫：scripts/ 下每个 *-test.js 都必须出现在 SUITES 里。
+ *
+ * 为什么需要：本轮真实发生过两次"测试文件写了、跑过一次就忘了挂"，
+ * 于是它再也不被执行，看起来"测试全绿"其实少了一整套断言。
+ * 靠人记住挂哪个文件是防不住的，所以让漏挂直接变成失败。
+ */
+function assertNoOrphanTests() {
+  const listed = new Set(SUITES.map(([, file]) => path.basename(file)));
+  const orphans = fs
+    .readdirSync(path.join(ROOT, 'scripts'))
+    .filter((f) => f.endsWith('-test.js') || f.endsWith('.test.js'))
+    .filter((f) => !listed.has(f));
+  if (orphans.length) {
+    console.error('\n✗ 有测试文件没挂进 SUITES，永远不会被跑：');
+    for (const o of orphans) console.error(`    scripts/${o}`);
+    console.error('  修法：在 SUITES 里加一行 [\'名称\', `scripts/${文件}`]');
+    process.exit(1);
+  }
+}
+
+assertNoOrphanTests();
 
 const results = [];
 for (const [label, file, extra = []] of SUITES) {

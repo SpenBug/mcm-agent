@@ -8,6 +8,7 @@ const { PROVIDERS, readConfig, writeConfig, publicConfig } = require('./store');
 const { testConnection } = require('./agent/llm');
 const { runAgent } = require('./agent/loop');
 const { buildSystemPrompt } = require('./agent/prompt');
+const sessionTitle = require('./agent/session-title');
 const py = require('./runtime/python');
 const drawio = require('./runtime/drawio');
 const { getSkillsRoot, getDefaultWorkspace, getUserDataDir, getBrandDir } = require('./paths');
@@ -16,6 +17,61 @@ const snapshot = require('./snapshot');
 const comps = require('./competitions');
 
 let currentAbort = null;
+
+/**
+ * 等落盘的 LLM 会话标题：sessionId -> title。
+ *
+ * 为什么需要它（真实竞态）：会话文件是在 chat:send 里 agent **跑完之后**才写的，
+ * 用的是那次调用传入的标题快照；而 LLM 标题几秒就返回了。
+ * 不记这一笔的话两种坏结果二选一：
+ *   - 标题先写文件、会话还没落盘 → 文件不存在，标题丢失
+ *   - 会话后写文件 → 用旧快照把 LLM 标题覆盖回本地兜底
+ * 放主进程而不是渲染层，是因为写文件的动作在主进程。
+ */
+const pendingTitles = new Map();
+
+/** 会话标题上限：chat:send 失败时条目会留下，别让长期运行的进程无限攒 */
+const PENDING_TITLE_MAX = 50;
+
+function rememberTitle(sessionId, title) {
+  const key = String(sessionId || '');
+  // Map 保持插入顺序，满了就丢最旧的一条 —— 旧标题早该随会话落盘了
+  while (pendingTitles.size >= PENDING_TITLE_MAX) {
+    const oldest = pendingTitles.keys().next();
+    if (oldest.done) break;
+    pendingTitles.delete(oldest.value);
+  }
+  pendingTitles.set(key, title);
+}
+
+/** 渲染层还没命名时的占位值，见到就当"没有标题" */
+const PLACEHOLDER_TITLES = new Set(['', '未命名', '新会话']);
+
+/**
+ * 决定会话落盘时用哪个标题，优先级：
+ *   LLM 生成的（内存待写） > 渲染层给的 > 主进程按首条消息算的本地标题 > 未命名
+ *
+ * 为什么本地标题要在**主进程**算而不是让渲染层 await 一个 IPC：
+ *   1. 渲染层为了拿到标题，得在发消息前多等一次往返 —— 那段 await 期间
+ *      发送锁还没上，用户再按一次就并发跑两轮（这个窗口在快照那步本来就存在，
+ *      不该被新功能继续放大）。
+ *   2. 谁写文件谁负责算标题，规则只有一份；两边各算必然漂移
+ *      —— 本项目这轮已经为手抄数据吃过四次亏。
+ *   3. 顺带修掉一个不一致：LLM 失败时磁盘上会退回「新会话」，
+ *      而界面显示的是渲染层算的标题，重开软件就变回去了。
+ */
+function resolveSessionTitle(sessionId, title, messages) {
+  const pending = pendingTitles.get(String(sessionId || ''));
+  if (pending !== undefined) {
+    pendingTitles.delete(String(sessionId || ''));
+    return pending;
+  }
+  if (!PLACEHOLDER_TITLES.has(String(title || '').trim())) return title;
+
+  const firstUser = (messages || []).find((m) => m && m.role === 'user');
+  const local = firstUser ? sessionTitle.localTitle(firstUser.content) : '';
+  return local || title || '未命名';
+}
 
 function sessionsDir(workspace) {
   return path.join(workspace, '.mcm-agent', 'sessions');
@@ -607,7 +663,7 @@ function registerIpc(getWindow) {
     const sid = safeName(id) || `session-${Date.now()}`;
     fs.writeFileSync(
       path.join(dir, `${sid}.json`),
-      JSON.stringify({ id: sid, title: title || '未命名', messages, updated: Date.now() }, null, 2),
+      JSON.stringify({ id: sid, title: resolveSessionTitle(sid, title, messages), messages, updated: Date.now() }, null, 2),
       'utf8'
     );
     return sid;
@@ -626,6 +682,65 @@ function registerIpc(getWindow) {
     } catch {
       return null;
     }
+  });
+
+  /**
+   * 本地兜底标题：纯字符串计算，瞬时返回、不联网、不受授权影响。
+   *
+   * 为什么要单独一个端点而不是在渲染层重写一遍截断规则：
+   * 那样就有两份"标题怎么取"的实现（中英文判定、噪音行过滤、按标点收口），
+   * 必然漂移 —— 本项目这轮已经为手抄数据吃过四次亏。
+   * 渲染层先拿这个把侧栏填上，再等 LLM 版本回来替换。
+   */
+  ipcMain.handle('session:title-local', (_e, { text }) => {
+    const content = String(text || '').trim();
+    if (!content) return { ok: false, code: 'EMPTY_INPUT' };
+    const title = sessionTitle.localTitle(content);
+    return title ? { ok: true, title } : { ok: false, code: 'EMPTY' };
+  });
+
+  /**
+   * 生成会话标题（对标 DSH 的 session-title-llm）。
+   *
+   * ⚠️ 三条实现约束，都是这个功能特有的坑：
+   *  1. **不碰 currentAbort** —— 那是对话流的停止句柄。标题是并行发起的辅助调用，
+   *     共用会让用户点「停止」时状态错乱，或标题超时误伤正在跑的对话。
+   *     generateTitle 内部自带独立 signal，这里直接调用即可。
+   *  2. **失败一律返回 {ok:false}**，不抛错也不提示 ——
+   *     渲染层已经先给了本地兜底标题，这里失败只是"不替换"，不该打扰用户。
+   *  3. 成功后**顺手更新已落盘的会话文件**：会话在 chat:send 里才写盘，
+   *     标题却先返回，不补这一笔侧栏会一直显示旧值。
+   */
+  ipcMain.handle('session:title', async (_e, { sessionId, text }) => {
+    { const g = licenseBlocked(); if (g.blocked) return { ok: false, licenseBlocked: true, code: 'LICENSE' }; }
+
+    const content = String(text || '').trim();
+    if (!content) return { ok: false, code: 'EMPTY_INPUT' };
+
+    const cfg = readConfig();
+    const res = await sessionTitle.generateTitle({
+      config: cfg,
+      messages: [{ role: 'user', content }],
+    });
+
+    if (res.ok && sessionId) {
+      rememberTitle(sessionId, res.title);   // 供稍后落盘的 chat:send / session:save 取用
+      if (cfg.workspace) {
+        try {
+          const dir = sessionsDir(ensureWorkspaceDirs(cfg.workspace));
+          const file = path.join(dir, `${safeName(sessionId)}.json`);
+          if (fs.existsSync(file)) {
+            const j = JSON.parse(fs.readFileSync(file, 'utf8'));
+            j.title = res.title;
+            fs.writeFileSync(file, JSON.stringify(j, null, 2), 'utf8');
+            pendingTitles.delete(String(sessionId));     // 已写成功，不必再等
+          }
+        } catch {
+          /* 更新落盘失败不影响标题本身已生效；保留在 pendingTitles 里等下次写 */
+        }
+      }
+    }
+    return res;
   });
 
   ipcMain.handle('session:delete', (_e, id) => {
@@ -800,9 +915,13 @@ function registerIpc(getWindow) {
         const persist = out.messages.filter((m) => m.role !== 'system');
         const dir = sessionsDir(ws);
         fs.mkdirSync(dir, { recursive: true });
+        // 标题优先级：内存里等落盘的 LLM 标题 > 渲染层给的 > 主进程本地算 > 未命名。
+        // LLM 标题可能在这轮 agent 跑完之前就返回了，但当时会话文件还不存在，
+        // 所以只记在了内存里 —— 直接用参数 title 会把它覆盖回本地兜底那条。
+        const finalTitle = resolveSessionTitle(sessionId, title, persist);
         fs.writeFileSync(
           path.join(dir, `${safeName(sessionId)}.json`),
-          JSON.stringify({ id: sessionId, title: title || '未命名', messages: persist, updated: Date.now() }, null, 2),
+          JSON.stringify({ id: sessionId, title: finalTitle, messages: persist, updated: Date.now() }, null, 2),
           'utf8'
         );
       }

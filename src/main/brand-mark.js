@@ -75,8 +75,23 @@ const PALETTE = {
  * @param {object} [o]
  * @param {boolean} [o.mane] 是否画鬃毛（应用内小尺寸可关掉，避免糊）
  * @param {boolean} [o.face] 是否画眼/鼻孔
+ * @param {boolean} [o.mono] 单色模式：全部用 currentColor，跟随 CSS color。
+ *   头像、锁页标记这类"容器自己已经有底色"的位置要用它 ——
+ *   带底板的 brandMark 放进去会变成"蓝底套蓝底"；
+ *   而写死白色在浅色主题下会直接看不见。
+ *   单色模式不画五官：28px 下眼睛只有 1 像素，和 16px 图标同理会糊成脏点。
  */
-function markBody({ mane = true, face = true } = {}) {
+function markBody({ mane = true, face = true, mono = false } = {}) {
+  if (mono) {
+    const parts = [
+      // 远侧耳压暗一档，靠透明度做出前后层次（仍然是单色）
+      `<path d="${FAR_EAR_PATH}" fill="currentColor" opacity=".55"/>`,
+      `<path d="${HORSE_PATH}" fill="currentColor"/>`,
+    ];
+    if (mane) parts.push(`<path d="${MANE_PATH}" fill="currentColor" opacity=".22"/>`);
+    return parts.join('\n    ');
+  }
+
   const parts = [
     `<path d="${FAR_EAR_PATH}" fill="${PALETTE.farEar}"/>`,
     `<path d="${HORSE_PATH}" fill="url(#lgHorse)"/>`,

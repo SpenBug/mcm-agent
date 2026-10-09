@@ -41,6 +41,14 @@
               <circle cx="112" cy="101" r="7.5" fill="#1a2545"/>
               <ellipse cx="57" cy="154" rx="5" ry="7" transform="rotate(-28 57 154)" fill="#1a2545" opacity=".85"/>
         </symbol>
+        <!-- 单色马头：给"容器自己已有底色"的位置用（助手头像、激活页标记）。
+             用 currentColor 所以深色/浅色主题都看得见；不画五官，
+             那些位置只有 28~42px，眼睛会糊成脏点。 -->
+        <symbol id="brandMarkMono" viewBox="0 0 256 256">
+          <path d="M153 74 L172 34 L184 70 Z" fill="currentColor" opacity=".55"/>
+              <path d="M150 32 C147 44 143 53 139 61 C124 68 108 80 92 96 C76 112 60 128 50 142 C44 151 42 160 46 167 C51 174 60 178 71 180 C84 182 94 186 99 193 C103 201 104 209 104 218 L178 218 C183 199 186 178 185 158 C184 134 178 110 169 89 C165 80 161 71 158 62 C160 52 158 41 150 32 Z" fill="currentColor"/>
+              <path d="M157 62 C166 84 175 116 179 148 C182 174 180 198 175 218 L159 218 C165 197 167 174 164 150 C160 118 151 90 143 71 Z" fill="currentColor" opacity=".22"/>
+        </symbol>
       </defs>
     </svg>
     <!-- BRAND:MARK:END -->
@@ -128,8 +136,13 @@
       </div>
 
       <div class="composer">
+        <!-- 引用 chip：正文里的 @{类别/名称} 的投影，点 ✕ 会删掉正文里那段文本。
+             由 app.js 每次从 textarea 重新解析，不另存一份列表（防漂移）。 -->
+        <div class="ref-rail hidden" id="refRail" aria-label="已引用的材料"></div>
+        <!-- @{ 触发的候选面板，绝对定位挂在输入框上方 -->
+        <div class="ref-pop hidden" id="refPop" role="listbox" aria-label="引用候选"></div>
         <textarea id="input" rows="3"
-          placeholder="描述你的题目或任务，例如：把 CUMCM 2024 A 题做完整流程，论文出 Word 版"></textarea>
+          placeholder="描述你的题目或任务（实际提示由 app.js 按当前状态动态设置）"></textarea>
         <div class="composer-bar">
           <span class="hint" id="statusHint"></span>
           <!-- Token 读数：常驻显示，点开是完整仪表盘 -->
@@ -185,7 +198,10 @@
     <div class="lock-mask hidden" id="lockMask">
       <div class="lock-card">
         <div class="lock-head">
-          <span class="lock-mark">∑</span>
+          <!-- 马头（单色版，跟随 .lock-mark 的 color）。
+               这里原本是旧品牌「数模工坊」的 ∑ 符号，改名时漏掉了 ——
+               激活页是掏钱那一屏，品牌标记对不上最扎眼。 -->
+          <span class="lock-mark"><svg viewBox="0 0 256 256" aria-hidden="true"><use href="#brandMarkMono"/></svg></span>
           <div>
             <h2 id="lockTitle">体验已结束</h2>
             <p class="lock-sub" id="lockSub">2 小时体验时间已用完。激活后即可继续使用。</p>
@@ -288,6 +304,8 @@
       </div>
     </div>
 
+    <script src="drafts.js"></script>
+    <script src="refs.js"></script>
     <script src="app.js"></script>
   </body>
   </html>

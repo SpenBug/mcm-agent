@@ -5,6 +5,48 @@
   const $ = (id) => document.getElementById(id);
   const api = window.mcm;
 
+  /**
+   * 草稿存储。localStorage 不可用时（隐私模式 / 被策略禁用）退化成空实现，
+   * 输入框照常工作，只是不记忆 —— 不能因为草稿把主功能搞崩。
+   */
+  const drafts = (() => {
+    try {
+      return window.createDrafts(window.localStorage);
+    } catch {
+      // 降级桩必须覆盖全部方法 —— 少一个，调用处就抛 TypeError，
+      // 反而把"草稿不可用不该影响主功能"这个前提破坏了
+      return {
+        save: () => false, load: () => '', clear: () => false, drop: () => false,
+        setLast: () => false, getLast: () => '', resumable: () => '',
+      };
+    }
+  })();
+
+  /** 输入防抖计时器。提到这里是为了让切会话 / 发送都能取消它 */
+  let draftTimer = null;
+
+  /** 把当前输入框内容存回它所属会话，并记住"最后在编辑哪个会话" */
+  function stashDraft() {
+    const el = $('input');
+    if (!el || !state.sessionId) return;
+    drafts.save(state.sessionId, el.value);
+    drafts.setLast(state.sessionId);
+  }
+
+  function cancelDraftTimer() {
+    if (draftTimer) { clearTimeout(draftTimer); draftTimer = null; }
+  }
+
+  /** 载入目标会话的草稿到输入框（没有就清空） */
+  function applyDraft() {
+    const el = $('input');
+    if (!el) return;
+    // 取消挂起的防抖：否则它会在切完之后把内容存到错误的会话名下
+    cancelDraftTimer();
+    el.value = state.sessionId ? drafts.load(state.sessionId) : '';
+    renderRefRail();   // 草稿里可能带着引用，rail 要跟着出来
+  }
+
   const state = {
     config: null,
     providers: [],
@@ -20,6 +62,10 @@
     assistantPushed: false,   // 本轮的 assistant 消息是否已入列（工具消息必须排在它后面）
     usage: { prompt: 0, completion: 0, total: 0, cached: 0, missed: 0, hasCacheInfo: false, turns: [] },
     sessionCache: [],   // 会话列表缓存，命令面板切会话用
+    /** 已提交材料总数。由 refreshSlots 顺手算出来，placeholder 要用它 */
+    materialCount: 0,
+    /** 各分类的文件列表（引用候选要用），同样由 refreshSlots 顺手填 */
+    materialFiles: {},
     toolNodes: new Map(),
     reasoningBuffer: '',
     lastPreview: '',
@@ -168,7 +214,15 @@
     wrap.className = `msg ${role}`;
     const av = document.createElement('div');
     av.className = 'avatar';
-    av.textContent = role === 'user' ? '你' : '∑';
+    if (role === 'user') {
+      av.textContent = '你';
+    } else {
+      // 助手头像原本是旧品牌「数模工坊」的 ∑ —— 每条回复都会显示，
+      // 是全站出现频率最高的品牌标记，改名时漏掉了。
+      // 用单色马头（#brandMarkMono）而不是带底板的 brandMark：
+      // .msg.assistant .avatar 自己已经是品牌蓝底，再放一张蓝底图就是蓝底套蓝底。
+      av.innerHTML = '<svg viewBox="0 0 256 256" aria-hidden="true"><use href="#brandMarkMono"/></svg>';
+    }
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
     // 内容列：气泡 + 思考过程块都放这里，**竖向排列**。
@@ -894,17 +948,33 @@
   /** 把工作区 input/<分类>/ 里的文件数回填到四个槽位上 */
   async function refreshSlots(scope) {
     const host = (scope || document).querySelector('#slots');
-    if (!host) return;
     let data;
     try {
       data = await api.input.list();
     } catch {
       return;
     }
+
+    // 材料总数与 placeholder 只取决于数据，不取决于槽位 DOM 在不在
+    // （槽位只在空状态里有，发过消息后就没有了 —— 但提示语一直需要这个数）
+    let total = 0;
+    const byCat = {};
+    for (const cat of data.cats || []) {
+      const files = cat.files || [];
+      total += files.length;
+      byCat[cat.key] = files;
+    }
+    state.materialCount = total;
+    state.materialFiles = byCat;
+    updatePlaceholder();
+    // 引用候选的数据变了，正文里已有的引用可能要重画（材料被删掉时 chip 也该消失）
+    renderRefRail();
+
+    if (!host) return;
     for (const cat of data.cats || []) {
       const el = host.querySelector(`.slot[data-cat="${cat.key}"]`);
-      if (!el) continue;
       const n = (cat.files || []).length;
+      if (!el) continue;
       el.classList.toggle('has', n > 0);
       const badge = el.querySelector('.slot-count');
       if (!n) {
@@ -921,6 +991,200 @@
       // 悬停能看到具体文件名 + 怎么操作
       el.title = `${cat.files.map((f) => f.name).join('\n')}\n\n点击管理 / 删除这类材料`;
     }
+  }
+
+  /**
+   * 输入框提示语按当前状态变化，而不是写死在 HTML 里。
+   *
+   * 为什么值得动态：固定文案对"已经配好 Key、已经交了材料"的用户是噪音，
+   * 对他真正卡住的那一步（通常是下一步该干什么）毫无提示。
+   * 按优先级只说最要紧的一件事。
+   *
+   * ⚠️ 赛事名取自 compState（主进程从 competitions.js 拿的同一份数据），
+   * 不在这里写"国赛该说什么、美赛该说什么"的映射表 ——
+   * 那会是第五份手抄清单，改了赛事就漂移（本轮已经栽过四次）。
+   */
+  function updatePlaceholder() {
+    const el = $('input');
+    if (!el) return;
+    let ph;
+    if (!state.config?.hasApiKey) {
+      ph = '先在设置里填 API Key（左下角「设置」），配好就能开始';
+    } else if (state.materialCount > 0) {
+      ph = `已收到 ${state.materialCount} 项材料。说明要解决什么问题、出什么成果（输入 @{ 可引用材料）`;
+    } else {
+      const cur = compState?.current && (compState.list || []).find((c) => c.id === compState.current);
+      ph = cur
+        ? `给「${cur.name}」跑一道题：说明要解决什么（输入 @{ 可引用赛题/数据，或先拖材料进对应槽位）`
+        : '描述你的题目或任务，例如：把这道题做完整流程，论文出 Word 版（输入 @{ 可引用材料）';
+    }
+    if (el.placeholder !== ph) el.placeholder = ph;
+  }
+
+  /* ================= 引用 chip（@{类别/名称}） ================= */
+
+  const Refs = window.McmRefs;
+
+  /** 中文输入法组合态标记：期间绝不弹候选面板，否则打断拼音上屏 */
+  let composing = false;
+
+  /**
+   * 组装候选来源。全部取自已有的界面状态，不新增 IPC：
+   * 材料来自 refreshSlots 用的同一个 input.list，赛事来自 compState，模型来自 providers。
+   */
+  function buildRefSources() {
+    const groups = [];
+    const catLabels = { 赛题: '赛题材料', 规范: '格式规范', 模板: '论文模板', 数据: '赛题数据' };
+    for (const key of ['赛题', '规范', '模板', '数据']) {
+      const files = (state.materialFiles[key] || []).map((f) => ({ name: f.name }));
+      if (files.length) groups.push({ cat: key, items: files, label: catLabels[key] });
+    }
+    const comps = (compState?.list || []).map((c) => ({
+      name: c.name,
+      hint: c.status === 'open' ? '报名中' : c.status === 'running' ? '进行中' : (c.statusLabel || ''),
+    }));
+    if (comps.length) groups.push({ cat: '赛事', items: comps, label: '赛事' });
+
+    const models = [];
+    if (state.config?.model) models.push({ name: state.config.model, hint: '当前使用' });
+    for (const p of state.providers || []) {
+      for (const m of p.models || []) if (!models.some((x) => x.name === m)) models.push({ name: m, hint: p.label });
+    }
+    if (models.length) groups.push({ cat: '模型', items: models, label: '模型' });
+    return groups;
+  }
+
+  /** 每次从正文重新解析渲染 —— 不维护第二份引用列表（DSH 的教训） */
+  function renderRefRail() {
+    const rail = $('refRail');
+    const el = $('input');
+    if (!rail || !el || !Refs) return;
+    const refs = Refs.parseRefs(el.value);
+    if (!refs.length) {
+      rail.classList.add('hidden');
+      rail.innerHTML = '';
+      return;
+    }
+    rail.classList.remove('hidden');
+    rail.innerHTML = refs.map((r, i) => `
+      <span class="ref-chip" data-i="${i}" title="${esc(r.cat)}：${esc(r.name)}">
+        <span class="ref-cat">${esc(r.cat)}</span><span class="ref-name">${esc(r.name)}</span>
+        <button type="button" class="ref-x" data-i="${i}" title="从正文里删掉这段引用" aria-label="删除引用">✕</button>
+      </span>`).join('');
+    rail._refs = refs;
+  }
+
+  function closeRefPop() {
+    const pop = $('refPop');
+    if (pop) { pop.classList.add('hidden'); pop.innerHTML = ''; pop._items = []; pop._sel = 0; }
+  }
+
+  function openRefPop(query, anchorStart) {
+    const pop = $('refPop');
+    if (!pop || !Refs) return;
+    const items = Refs.filterCandidates(query, buildRefSources());
+    if (!items.length) { closeRefPop(); return; }
+    pop._items = items;
+    pop._sel = 0;
+    pop._start = anchorStart;
+    pop.innerHTML = items.map((c, i) => `
+      <div class="ref-item${i === 0 ? ' on' : ''}" data-i="${i}" role="option">
+        <span class="ref-cat">${esc(c.cat)}</span><span class="ref-name">${esc(c.name)}</span>
+        ${c.hint ? `<span class="ref-hint">${esc(c.hint)}</span>` : ''}
+      </div>`).join('');
+    pop.classList.remove('hidden');
+  }
+
+  /** 把 @{...} 插入正文（替换掉正在输入的 @{片段），并把光标放到它后面 */
+  function insertRef(cat, name) {
+    const el = $('input');
+    const pop = $('refPop');
+    if (!el || !Refs) return;
+    const text = el.value;
+    const caret = el.selectionStart ?? text.length;
+    const start = typeof pop?._start === 'number' ? pop._start : caret;
+    const snippet = Refs.formatRef(cat, name);
+    el.value = text.slice(0, start) + snippet + text.slice(caret);
+    const pos = start + snippet.length;
+    el.setSelectionRange(pos, pos);
+    el.focus();
+    closeRefPop();
+    renderRefRail();
+    stashDraft();
+  }
+
+  function moveRefSel(delta) {
+    const pop = $('refPop');
+    if (!pop || pop.classList.contains('hidden') || !pop._items?.length) return;
+    const n = pop._items.length;
+    pop._sel = (pop._sel + delta + n) % n;
+    [...pop.children].forEach((c, i) => c.classList.toggle('on', i === pop._sel));
+    pop.children[pop._sel]?.scrollIntoView({ block: 'nearest' });
+  }
+
+  function refPopOpen() {
+    const pop = $('refPop');
+    return Boolean(pop && !pop.classList.contains('hidden'));
+  }
+
+  function bindRefsUI() {
+    const el = $('input');
+    const rail = $('refRail');
+    const pop = $('refPop');
+    if (!el || !rail || !pop || !Refs) return;
+
+    // IME：组合期间不弹面板。中文打 @ 时先进组合态，那时文本未定，
+    // 弹面板会把候选词上屏打断 —— 这是本项目用户的主输入方式。
+    el.addEventListener('compositionstart', () => { composing = true; closeRefPop(); });
+    el.addEventListener('compositionend', () => { composing = false; onInputForRefs(); });
+
+    rail.addEventListener('click', (e) => {
+      const btn = e.target.closest('.ref-x');
+      if (!btn) return;
+      const refs = rail._refs || [];
+      const ref = refs[Number(btn.dataset.i)];
+      el.value = Refs.removeRef(el.value, ref);
+      renderRefRail();
+      stashDraft();
+      el.focus();
+    });
+
+    pop.addEventListener('mousedown', (e) => {
+      // mousedown 而非 click：click 之前 textarea 已失焦，光标位置会丢
+      const item = e.target.closest('.ref-item');
+      if (!item) return;
+      e.preventDefault();
+      const c = pop._items?.[Number(item.dataset.i)];
+      if (c) insertRef(c.cat, c.name);
+    });
+
+    function onInputForRefs() {
+      renderRefRail();
+      if (composing) { closeRefPop(); return; }
+      const trig = Refs.detectTrigger(el.value, el.selectionStart ?? el.value.length);
+      if (trig) openRefPop(trig.query, trig.start);
+      else closeRefPop();
+    }
+
+    el.addEventListener('input', onInputForRefs);
+    el.addEventListener('click', () => { if (!composing) onInputForRefs(); });
+    el.addEventListener('blur', () => setTimeout(closeRefPop, 120));
+
+    // 面板键盘操作：↑↓ 选、Enter/Tab 插入、Esc 关。
+    // ⚠️ 这里不用 capture —— 对同一个事件目标，capture 和 bubble 监听器
+    // 都按**注册顺序**执行，capture 标志不改变这一点。
+    // "面板开着时 Enter 不发送"靠的是发送那个监听器里的显式 refPopOpen() 判断，
+    // 不靠注册顺序或 capture（那种隐式依赖挪一下代码就失效）。
+    el.addEventListener('keydown', (e) => {
+      if (!refPopOpen()) return;
+      if (e.key === 'ArrowDown') { e.preventDefault(); moveRefSel(1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); moveRefSel(-1); }
+      else if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault();
+        const c = pop._items?.[pop._sel];
+        if (c) insertRef(c.cat, c.name);
+      } else if (e.key === 'Escape') { e.preventDefault(); closeRefPop(); }
+    });
   }
 
   /* ================= 对话流程 ================= */
@@ -1023,14 +1287,33 @@
     }
 
     $('input').value = '';
+    // 内容已经作为消息发出去了，草稿必须清掉：
+    // 否则切走再切回来，输入框里会重新冒出一模一样的一句话。
+    // 先取消挂起的防抖，免得它在这次清空之后又把旧值写回去。
+    cancelDraftTimer();
+    drafts.clear(state.sessionId);
+    renderRefRail();   // 正文清空了，rail 上的 chip 必须一起消失
     const empty = $('messages').querySelector('.empty-state');
     if (empty) empty.remove();
 
-    // 会话标题：第一条消息自动命名（取首行、截 20 字）。
-    // 以前所有会话都叫「新会话」，侧栏和历史列表完全分不出哪个是哪个。
+    // 会话标题：第一条消息才命名。以前是 firstLine.slice(0,20) 硬截断 ——
+    // 中文标题被腰斩，而且用户粘整篇赛题时首行往往是「附件1」，侧栏分不出谁是谁。
+    //
+    // ⚠️ 这里**不 await**：落盘标题的一致性由主进程 resolveSessionTitle 兜底
+    // （它自己会算本地标题），这次往返纯粹是为了让侧栏几毫秒内就有可读名字，
+    // 不用干等到 LLM 那一下（最长十几秒）。
+    // 若在发消息前 await 一个 IPC，发送锁还没上、await 期间用户再按一次就并发跑两轮。
     if (state.sessionTitle === '新会话' || !state.sessionTitle) {
-      const firstLine = content.split('\n').find((l) => l.trim()) || content;
-      state.sessionTitle = firstLine.trim().slice(0, 20) || '新会话';
+      const sid = state.sessionId;
+      void localTitleFor(content).then((t) => {
+        if (state.sessionId !== sid) return;   // 用户已切走，别污染当前会话
+        // ⚠️ LLM 标题可能已经先回来了（虽然它更慢，但主进程忙时这次往返也可能被拖后）。
+        // 那时标题已不是占位值，再写就把更好的 LLM 标题盖回本地截断那条。
+        if (state.sessionTitle !== '新会话' && state.sessionTitle) return;
+        state.sessionTitle = t;
+        loadSessions();
+      });
+      void refineTitle(content, sid, state.sessionTitle);
     }
 
     // 先给工作区拍一张快照 —— 回滚时用它整体还原（覆盖 / 新增 / 删除都能回去）。
@@ -1739,6 +2022,9 @@
       }
     }
     renderCompetitions();
+    // compState 是 placeholder 取赛事名的唯一来源，只在这里被赋值，
+    // 所以挂这一处就覆盖"启动 / 打开面板 / 切换赛事"三条路径
+    updatePlaceholder();
     startCompTicker();
   }
 
@@ -1894,7 +2180,11 @@
         if (e.target.classList.contains('del')) {
           e.stopPropagation();
           await api.session.remove(s.id);
-          if (state.sessionId === s.id) newSession();
+          // 会话删了，它的草稿也必须删 —— 否则那条草稿永久占着一个名额
+          // （草稿总数有上限，僵尸条目会把有效草稿挤掉）。
+          // 删的是当前会话时走 newSession({discardDraft})，由它负责 drop + 保留输入框内容。
+          if (state.sessionId === s.id) newSession({ discardDraft: true });
+          else drafts.drop(s.id);
           loadSessions();
           return;
         }
@@ -1904,8 +2194,45 @@
     }
   }
 
+  /**
+   * 问主进程要一个本地兜底标题（纯字符串计算，不联网，毫秒级）。
+   *
+   * 只用于**让侧栏早点有可读名字**。落盘时的标题一致性不靠这里保证 ——
+   * 主进程 resolveSessionTitle 自己也会算本地标题，所以这次往返可以完全不阻塞发消息。
+   */
+  async function localTitleFor(text) {
+    try {
+      const r = await api.session.titleLocal({ text });
+      if (r && r.ok && r.title) return r.title;
+    } catch { /* IPC 未就绪等极端情况走下面的兜底 */ }
+    // 极端情况下也要有个能看的名字，别让侧栏空白
+    return String(text).split('\n').find((l) => l.trim())?.trim().slice(0, 12) || '新会话';
+  }
+
+  /**
+   * 用 LLM 把标题换掉（对标 DSH 的 session-title-llm）。
+   *
+   * ⚠️ 竞态必须处理：LLM 最长要十几秒，返回时用户很可能已经切到别的会话
+   * （甚至开了新会话）。那时把标题写进 state.sessionTitle 会污染当前会话，
+   * 所以比对 sessionId，不匹配就直接放弃。
+   * 失败静默：本地兜底标题已经在了，这里失败只是"不替换"，不该打扰用户。
+   */
+  async function refineTitle(text, sessionId, current) {
+    const sid = String(sessionId || '');
+    try {
+      const r = await api.session.title({ sessionId: sid, text });
+      if (r && r.ok && r.title && r.title !== current && state.sessionId === sid) {
+        state.sessionTitle = r.title;
+        loadSessions();
+      }
+    } catch { /* 同上，保留本地标题 */ }
+  }
+
   /** 切到指定会话。从 loadSessions 的点击逻辑里抽出来，命令面板复用 */
   async function openSession(id) {
+    // ⚠️ 顺序要紧：stashDraft 用的是 state.sessionId，必须在改它之前调用，
+    // 否则会把「上一个会话的输入」存到新会话名下。
+    stashDraft();
     const data = await api.session.load(id);
     if (!data) return;
     state.sessionId = data.id;
@@ -1915,10 +2242,28 @@
     state.usage = emptyUsage();
     paintTokenBar();
     renderMessages();
+    applyDraft();
     loadSessions();
   }
 
-  function newSession() {
+  /**
+   * 开一个新会话。
+   *
+   * @param {object} [o]
+   * @param {boolean} [o.discardDraft] 调用方已经把这个会话删掉了（删除当前会话的场景）。
+   *   此时不能 stashDraft() —— 那会把内容存进一个刚被删掉的会话名下，
+   *   留下永远读不到的幽灵数据；也不能 applyDraft() —— 新会话没草稿，
+   *   等于把用户正在打的字清空（改动前不会，这是不能打破的行为）。
+   *   默认行为是**原样保留输入框内容**并挂到新会话名下。
+   */
+  function newSession(o = {}) {
+    // 先取消挂起的防抖：否则它会在下面换了 sessionId 之后才触发，
+    // 把内容写到一个"用户其实没在编辑"的会话名下。
+    cancelDraftTimer();
+    if (o.discardDraft) drafts.drop(state.sessionId);
+    else stashDraft();
+
+    const carried = String($('input')?.value || '');
     state.sessionId = `session-${Date.now()}`;
     state.sessionTitle = '新会话';
     state.messages = [];
@@ -1926,6 +2271,15 @@
     state.usage = emptyUsage();
     paintTokenBar();
     renderMessages();
+
+    if (carried) {
+      // 有未发送内容就留在框里，并挂到新会话名下 ——
+      // 切走再切回来、甚至重启都还在。没内容时才去载入新会话自己的草稿（即清空）。
+      drafts.save(state.sessionId, carried);
+      drafts.setLast(state.sessionId);
+    } else {
+      applyDraft();
+    }
     $('statusHint').textContent = '';
     loadSessions();
   }
@@ -2296,6 +2650,9 @@
     }
     $('wsPath').textContent = state.workspace || '未设置工作区';
     $('wsPath').title = state.workspace || '';
+    // 提示语和顶栏徽章依赖同一个 hasApiKey 判断，挂在这里就不用
+    // 在每个改配置的地方各补一句（保存 Key / 清除 Key / 换工作区 / 启动）
+    updatePlaceholder();
   }
 
   async function init() {
@@ -2324,7 +2681,29 @@
     state.workspace = await api.workspace.ensure();
 
     updateHeader();
-    newSession();
+    // 启动时优先恢复到「上次正在编辑、且有未发送草稿」的会话，而不是无条件开新会话。
+    // 否则 newSession() 生成全新 id，查不到任何草稿 ——
+    // 「关窗口再打开，没发出去的内容还在」这个最核心的场景就完全失效了。
+    const resumeId = drafts.resumable();
+    const orphan = resumeId ? drafts.load(resumeId) : '';
+    let resumed = false;
+    if (resumeId) {
+      await openSession(resumeId);
+      // openSession 会因文件不存在（草稿属于一个从没发过消息的会话）或授权锁定而提前 return
+      resumed = state.sessionId === resumeId;
+    }
+    if (!resumed) {
+      newSession();
+      if (orphan) {
+        // 把孤儿草稿搬到新会话名下再填进输入框。
+        // 只设 input.value 不写回草稿的话，下次重启 getLast() 指向新 id，
+        // 而内容还挂在旧 id 上 —— 表现为「草稿时灵时不灵」。
+        drafts.save(state.sessionId, orphan);
+        drafts.setLast(state.sessionId);
+        drafts.drop(resumeId);
+        $('input').value = orphan;
+      }
+    }
     await loadSessions();
     await refreshFiles();
 
@@ -2334,10 +2713,39 @@
     $('btnStop').addEventListener('click', () => api.chat.abort());
     $('input').addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        // 引用面板开着时 Enter 是"选中候选"，不是"发送"。
+        // ⚠️ 用显式判断而不是靠监听器注册顺序：对同一个事件目标，
+        // capture 和 bubble 监听器是按注册先后执行的，不看 capture 标志 ——
+        // 依赖顺序的话，哪天挪一下代码就变成"按 Enter 既插入引用又把半句话发出去"。
+        if (refPopOpen()) return;
         e.preventDefault();
         send($('input').value);
       }
     });
+
+    // 草稿：输入防抖 400ms 存一次。不防抖的话每敲一个字就写一遍 localStorage，
+    // 中文输入法连续上屏时会有明显的卡顿感。
+    // ⚠️ 计时器用外层的 draftTimer，别在这里 let 一个新的 ——
+    // 遮蔽之后 applyDraft()/send() 里的 cancelDraftTimer() 就管不到它了，
+    // 表现是"切会话后 400ms，旧内容又被写进新会话"。
+    $('input').addEventListener('input', () => {
+      cancelDraftTimer();
+      draftTimer = setTimeout(() => { draftTimer = null; stashDraft(); }, 400);
+    });
+
+    // 防抖意味着"最后一次输入可能还没落盘"。关窗口 / 刷新前必须 flush 一次，
+    // 否则用户打完字直接关窗，最后那半句就没了 —— 正是草稿功能要防的场景。
+    // 用 pagehide 而不是 beforeunload：后者在 Electron 里不一定触发，且会阻塞卸载。
+    window.addEventListener('pagehide', () => {
+      cancelDraftTimer();
+      stashDraft();
+    });
+
+    // 引用 chip 与候选面板。
+    // 绑定时机无所谓：候选是**按下 @{ 那一刻**才现取的（见 buildRefSources），
+    // 它读的 state.providers / compState / state.materialFiles 都在 init 流程里
+    // 各自填充，一定早于用户可能输入 @{ 的时刻。
+    bindRefsUI();
 
     $('btnSettings').addEventListener('click', openSettings);
     $('btnEnv').addEventListener('click', openEnv);

@@ -236,22 +236,74 @@ async function checkChatE2E(win) {
     `);
     const ui = JSON.parse(raw);
 
-    const req0 = received[0] || {};
+    // ⚠️ 现在 mock 会收到**两类**请求，不能再拿 received[0] 当对话请求：
+    //   ① 会话标题的辅助请求（send() 开头并行发出，不带 tools）
+    //      特征是 system 里的 "Create a concise title" 与 user 里的 JSON 框
+    //   ② 真正的对话请求（带 7 个 tools 定义）
+    // 谁先谁后取决于网络，所以按特征挑，不按数组下标。
+    // 注意特征串分布在两条消息上（system 说要做标题、user 带 JSON 框），
+    // 只看 messages[0] 会漏 —— 所以这里对任意一条消息取或。
+    const isTitleReq = (r) => Array.isArray(r.messages) && r.messages.some(
+      (m) => typeof m.content === 'string'
+        && (m.content.includes('Create a concise title') || m.content.includes('Generate the session title')),
+    );
+    const titleReq = received.find(isTitleReq) || null;
+    const req0 = received.find((r) => Array.isArray(r.tools) && r.tools.length) || received.find((r) => !isTitleReq(r)) || {};
     const msgs = Array.isArray(req0.messages) ? req0.messages : [];
     const userMsg = msgs.find((m) => m.role === 'user');
 
-    out.push(`mock LLM 收到请求 => ${received.length > 0 ? '✓' : '✗ 一个都没收到'}`);
-    out.push(`请求含 system prompt => ${msgs.some((m) => m.role === 'system') ? '✓' : '✗'}`);
+    out.push(`mock LLM 收到请求 => ${received.length > 0 ? '✓' : `✗ 一个都没收到（共 ${received.length}）`}`);
+    out.push(`对话请求含 system prompt => ${msgs.some((m) => m.role === 'system') ? '✓' : `✗ roles=[${msgs.map((m) => m.role).join(',')}]`}`);
     out.push(
-      `请求含用户消息（关键） => ${
+      `对话请求含用户消息（关键） => ${
         userMsg && userMsg.content === 'PING_E2E_MARKER'
           ? '✓'
-          : `✗ 实际 roles=[${msgs.map((m) => m.role).join(',')}]`
-      }`
+          : `✗ 实际 roles=[${msgs.map((m) => m.role).join(',')}] 内容=${JSON.stringify(userMsg?.content?.slice(0, 40))}`
+      }`,
     );
     out.push(`请求带 7 个 tools 定义 => ${Array.isArray(req0.tools) && req0.tools.length === 7 ? '✓' : `✗ ${req0.tools?.length}`}`);
+
+    // 会话标题功能：确实发出了辅助请求、且不带 tools（不该污染对话链路）、
+    // 用户原文被 JSON 框住（防提示词注入）
+    out.push(`并行发出标题辅助请求 => ${titleReq ? '✓' : `✗ 未捕获（共 ${received.length} 个请求）`}`);
+    if (titleReq) {
+      out.push(`  标题请求不带 tools（不污染对话链路） => ${!titleReq.tools ? '✓' : `✗ tools=${titleReq.tools.length}`}`);
+      const tu = ((titleReq.messages || []).find((m) => m.role === 'user') || {}).content || '';
+      out.push(`  用户原文被 JSON 框住 => ${tu.includes('JSON array') && tu.includes('PING_E2E_MARKER') ? '✓' : `✗ ${tu.slice(0, 60)}`}`);
+      out.push(`  标题请求 max_tokens 已收紧 => ${titleReq.max_tokens > 0 && titleReq.max_tokens <= 64 ? `✓ ${titleReq.max_tokens}` : `✗ ${titleReq.max_tokens}`}`);
+    }
     out.push(`界面渲染出用户气泡 => ${ui.userBubbles.some((t) => t.includes('PING_E2E_MARKER')) ? '✓' : '✗'}`);
     out.push(`界面收到模型回复 => ${ui.asstBubbles.some((t) => t.includes('PONG_FROM_MOCK')) ? '✓' : '✗'}`);
+
+    // 助手头像：原本是旧品牌「数模工坊」的 ∑，每条回复都显示，
+    // 是全站出现频率最高的品牌标记。必须等上面真的产生过助手消息之后再查，
+    // 放在品牌那一段查会拿到 null 而误报。
+    const avatarInfo = await win.webContents.executeJavaScript(`
+      (() => {
+        const s = document.querySelector('.msg.assistant .avatar svg');
+        const u = document.querySelector('.msg.assistant .avatar svg use');
+        const r = s ? s.getBoundingClientRect() : null;
+        const bodyText = document.body.innerText || '';
+        return JSON.stringify({
+          href: u ? u.getAttribute('href') : null,
+          box: r ? Math.round(r.width) + 'x' + Math.round(r.height) : null,
+          cell: (() => {
+            const a = document.querySelector('.msg.assistant .avatar');
+            if (!a) return null;
+            const q = a.getBoundingClientRect();
+            return Math.round(q.width) + 'x' + Math.round(q.height);
+          })(),
+          sigma: (bodyText.match(/∑/g) || []).length,
+        });
+      })()
+    `);
+    const av = JSON.parse(avatarInfo);
+    out.push(`助手头像已是马头 => ${av.href === '#brandMarkMono' ? '✓' : `✗ ${av.href}`}`);
+    // svg 没显式尺寸时会按默认值撑破 28px 格子（把头像挤成长条）
+    out.push(`  头像 svg 尺寸受控（格子 ${av.cell}） => ${av.box === '19x19' ? '✓ 19x19' : `✗ ${av.box}`}`);
+    out.push(`  发消息后界面仍无残留 ∑ => ${av.sigma === 0 ? '✓' : `✗ ${av.sigma} 处`}`);
+    // 草稿：发送后必须清掉，否则切回来会重新冒出同一句话
+    out.push(`发送后输入框已清空 => ${!(await win.webContents.executeJavaScript('document.getElementById("input").value')) ? '✓' : '✗'}`);
   } catch (err) {
     out.push(`端到端异常 => ✗ ${err.message}`);
   } finally {
@@ -397,6 +449,15 @@ async function runSmokeBody(win, logs) {
           inviteCode: inv.code,
           rules: inv.rules,
           leakedWechat: /xhxc287/.test(bodyText),
+          // 旧品牌「数模工坊」的 ∑ 曾残留在激活页标记上。
+          // 注意：这里只能查"此刻已存在的 DOM"——助手消息要到端到端那步才有，
+          // 头像的断言放在 checkChatE2E 之后，别在这里查（会拿到 null 误报）。
+          sigmaLeft: (bodyText.match(/∑/g) || []).length,
+          lockMarkIsSvg: (() => {
+            const u = document.querySelector('.lock-mark svg use');
+            return u ? u.getAttribute('href') : null;
+          })(),
+          monoSymbolExists: !!document.getElementById('brandMarkMono'),
         });
       })()
     `);
@@ -413,6 +474,9 @@ async function runSmokeBody(win, logs) {
       ['邀请接口可用', bd.inviteOk === true],
       ['邀请规则带回（减 5 / 满 3）', bd.rules?.friendDiscount === 5 && bd.rules?.threshold === 3],
       ['界面上不再出现微信号', bd.leakedWechat === false, bd.leakedWechat ? '仍有 xhxc287' : ''],
+      ['单色马头 symbol 已生成', bd.monoSymbolExists === true],
+      ['激活页标记已是马头（不是旧 ∑）', bd.lockMarkIsSvg === '#brandMarkMono', String(bd.lockMarkIsSvg)],
+      ['界面上没有残留的旧 ∑ 符号', bd.sigmaLeft === 0, `残留 ${bd.sigmaLeft} 处`],
     ];
     let bdPass = 0;
     for (const [name, ok, detail] of bdChecks) {
@@ -420,6 +484,103 @@ async function runSmokeBody(win, logs) {
       if (ok) bdPass += 1;
     }
     console.log(`品牌与邀请码：${bdPass}/${bdChecks.length} 通过`);
+
+    /*
+     * 会话框内容（对标 DSH）：引用 chip / 草稿 / 动态 placeholder。
+     * 这些逻辑活在渲染层运行时里 —— 本轮已经吃过多次"源码看着对、
+     * 实际加载不到/不生效"的亏（图标那次最典型），所以全部实测。
+     */
+    const composerDom = await win.webContents.executeJavaScript(`
+      (async () => {
+        const el = document.getElementById('input');
+        const out = {
+          hasRefsLib: typeof window.McmRefs === 'object' && !!window.McmRefs,
+          hasDraftLib: typeof window.createDrafts === 'function',
+          hasRail: !!document.getElementById('refRail'),
+          hasPop: !!document.getElementById('refPop'),
+          placeholder: el.placeholder,
+        };
+
+        const type = async (v) => {
+          el.focus();
+          el.value = v;
+          el.setSelectionRange(v.length, v.length);
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          await new Promise(r => setTimeout(r, 260));
+        };
+
+        // ① @{ 触发候选面板
+        await type('请用 @{');
+        const pop = document.getElementById('refPop');
+        out.popOpened = !pop.classList.contains('hidden');
+        out.popItems = pop.querySelectorAll('.ref-item').length;
+
+        // ② 选中第一条 → 插入正文 + rail 出现 chip
+        if (out.popItems) {
+          pop.querySelector('.ref-item').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          await new Promise(r => setTimeout(r, 220));
+          out.afterInsert = el.value;
+          out.insertedText = el.value;
+          out.popClosed = pop.classList.contains('hidden');
+          const rail = document.getElementById('refRail');
+          out.railVisible = !rail.classList.contains('hidden');
+          out.chipCount = rail.querySelectorAll('.ref-chip').length;
+          // chip 必须是正文的投影：rail 上的名字要能在正文里找到
+          out.chipNameInText = (() => {
+            const n = rail.querySelector('.ref-name');
+            return n ? el.value.includes(n.textContent) : false;
+          })();
+          // ③ 点 chip 上的删除按钮，应把正文里那段引用删掉
+          rail.querySelector('.ref-x').click();
+          await new Promise(r => setTimeout(r, 220));
+          out.afterRemove = el.value;
+          out.railHiddenAfterRemove = document.getElementById('refRail').classList.contains('hidden');
+        }
+
+        // ④ 草稿：输入后等过防抖，localStorage 里要有
+        await type('草稿持久化验证XYZ');
+        await new Promise(r => setTimeout(r, 700));
+        try {
+          const raw = localStorage.getItem('mcm-drafts');
+          out.draftStored = raw ? raw.includes('草稿持久化验证XYZ') : false;
+          out.draftHasLast = raw ? JSON.parse(raw).__last__ !== undefined : false;
+        } catch (e) { out.draftErr = e.message; }
+
+        // ⑤ 切会话后草稿要能回来（新建会话会带走内容，所以验证"不丢"）
+        document.getElementById('btnNewSession').click();
+        await new Promise(r => setTimeout(r, 500));
+        out.afterNewSession = el.value;
+
+        el.value = '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        return JSON.stringify(out);
+      })()
+    `);
+    console.log('===会话框内容===');
+    console.log(composerDom);
+    const cw = JSON.parse(composerDom);
+    const cwChecks = [
+      ['refs.js 已加载', cw.hasRefsLib === true],
+      ['drafts.js 已加载', cw.hasDraftLib === true],
+      ['rail 与候选面板容器存在', cw.hasRail === true && cw.hasPop === true],
+      ['placeholder 已被动态改写', Boolean(cw.placeholder) && !cw.placeholder.includes('实际提示由 app.js'), cw.placeholder],
+      ['输入 @{ 弹出候选面板', cw.popOpened === true && cw.popItems > 0, `items=${cw.popItems}`],
+      ['选中候选后插入正文', typeof cw.insertedText === 'string' && cw.insertedText.includes('@{'), cw.insertedText],
+      ['插入后候选面板关闭', cw.popClosed === true],
+      ['rail 上出现 chip', cw.railVisible === true && cw.chipCount === 1, `count=${cw.chipCount}`],
+      ['chip 是正文的投影（名字能在正文找到）', cw.chipNameInText === true],
+      ['点 ✕ 后正文里那段引用被删掉', typeof cw.afterRemove === 'string' && !cw.afterRemove.includes('@{'), JSON.stringify(cw.afterRemove)],
+      ['删空后 rail 隐藏', cw.railHiddenAfterRemove === true],
+      ['草稿写入 localStorage', cw.draftStored === true, cw.draftErr || ''],
+      ['草稿带恢复指针 __last__', cw.draftHasLast === true],
+      ['切会话后输入内容不丢', typeof cw.afterNewSession === 'string' && cw.afterNewSession.includes('草稿持久化验证XYZ'), JSON.stringify(cw.afterNewSession)],
+    ];
+    let cwPass = 0;
+    for (const [name, ok, detail] of cwChecks) {
+      console.log(`${ok ? '✓' : '✗'} ${name}${detail ? `  [${detail}]` : ''}`);
+      if (ok) cwPass += 1;
+    }
+    console.log(`会话框内容：${cwPass}/${cwChecks.length} 通过`);
 
     // 走完整 IPC 链路验证：配置 / 会话 / 工作区 / 技能 / 中止 / 连通性异常处理
     // ⚠️ 第 7 条要把 apiKey 清空才能测到守卫分支，所以先在主进程备份原值
