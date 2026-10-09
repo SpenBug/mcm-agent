@@ -281,6 +281,8 @@ git rev-parse HEAD   # 两者必须一致
 | `fix-skill-relpaths.js --check` | 技能文档写相对路径（模型照抄必 `No such file`） |
 | `scrub-preview-userpath.js --check` | 预览桩里残留开发机用户名（做宣传图会暴露身份） |
 | `check-version-consistency.js` | README 下载链接版本与 package.json 不一致 |
+| `check-doc-diagrams.js` | Mermaid 裸尖括号（整块图渲染失败）、CRLF 让校验静默失配、图片引用不存在、**全文锚点失效**（首屏导航是目录之外的第二处手抄，重编号时曾漏 4 个） |
+| `check-sop-facts.js` | SOP/README 里的命令、文件、数字与现实不符（刻意不校验提交数/文件数 —— 自指事实必然腐烂） |
 | `sync-keygen-options.js --check` | 签发器赛事选项与定价漂移（曾漏 3 个赛事、亚太赛还是旧价） |
 | `icon-check.js` | 图标形状退化 / 产物过期（用**内容指纹**，不用 mtime） |
 
