@@ -35,6 +35,7 @@ const SUITES = [
   ['旧品牌符号未复活', 'scripts/scrub-legacy-mark.js', ['--check']],
   ['技能文档路径写法', 'scripts/fix-skill-relpaths.js', ['--check']],
   ['预览桩无开发机路径', 'scripts/scrub-preview-userpath.js', ['--check']],
+  ['版本号与下载链接一致', 'scripts/check-version-consistency.js'],
   ['签发器赛事选项与定价同源', 'scripts/sync-keygen-options.js', ['--check']],
   ['签发器与客户端密钥/定价一致', 'scripts/issuer-consistency-test.js'],
   ['签发器卡号与台账（keygen）', 'scripts/keygen-ledger-test.js'],
