@@ -278,6 +278,39 @@ async function buildWithRetry(run) {
   }
 }
 
+/**
+ * 打包前清掉随包资源里的 Python 缓存与临时产物。
+ *
+ * 为什么必须清：`__pycache__` 会被 electron-builder 原样拷进
+ * resources/skills（extraResources 不做过滤），后果有两个：
+ *   1. 包体积与文件数无谓增加；
+ *   2. **更糟的是"脏包"**：里面带着开发机的字节码，
+ *      而 verify-package 有一条"skills 里无 __pycache__"的验收会因此变红 ——
+ *      本轮实测踩到：跑 py_compile 验证语法后忘了清，包就脏了。
+ * .gitignore 虽然忽略了它（不会进仓库），但**不影响打包**（打包读的是工作区）。
+ */
+function cleanSkillCaches() {
+  const skillsDir = path.join(ROOT, 'resources', 'skills');
+  if (!fs.existsSync(skillsDir)) return;
+  let removed = 0;
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (e.name === '__pycache__') {
+          fs.rmSync(p, { recursive: true, force: true });
+          removed += 1;
+        } else walk(p);
+      } else if (e.name.endsWith('.pyc')) {
+        fs.rmSync(p, { force: true });
+        removed += 1;
+      }
+    }
+  };
+  walk(skillsDir);
+  if (removed) console.log(`[build] 清理 Python 缓存 ${removed} 项（__pycache__ / *.pyc）`);
+}
+
 /** 收集 extraResources 里的文件（这些是打包时最容易被占用的） */
 function collectResourceFiles() {
   const out = [];
@@ -298,6 +331,7 @@ function collectResourceFiles() {
 async function main() {
   ensureRealNode();
   cleanStale();
+  cleanSkillCaches();
   checkIconsOrAbort();
   // 事前探测只当"提前告知"用（能提前发现被长期占住的文件），
   // 真正兜住瞬时锁的是下面的 buildWithRetry。
