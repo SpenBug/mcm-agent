@@ -298,13 +298,21 @@ async function executeTool(name, args, ctx) {
     if (raw.startsWith('skills/') || raw.startsWith('skills\\')) {
       return resolveInside(skillsRoot, raw.replace(/^skills[\\/]/, ''), '技能目录读取');
     }
-    // ② 直接给技能库的**绝对路径**也放行。
+    // ② %MCM_SKILL_ROOT%/ 前缀 → 同样指向只读技能库。
+    //    ⚠️ 这个前缀在 run_command 里由 cmd 展开（技能文档的示例就写成这样），
+    //    但 run_python 走的是 argv、**不经过 shell**，`%VAR%` 不会被展开 ——
+    //    于是模型照文档把命令贴进 run_python 时会当成工作区相对路径而报"脚本不存在"。
+    //    这里显式认一下，两条执行路径就都能用同一份文档写法。
+    if (/^%MCM_SKILL_ROOT%[\\/]/i.test(raw)) {
+      return resolveInside(skillsRoot, raw.replace(/^%MCM_SKILL_ROOT%[\\/]/i, ''), '技能目录读取');
+    }
+    // ③ 直接给技能库的**绝对路径**也放行。
     //    提示词里同时给了 SKILL_ROOT 绝对路径（run_command 必须用它，因为 shell 的
     //    相对路径会按工作区解析），Agent 很容易照抄到 read_file 上。
     //    只认 skillsRoot 之内的，安全性不变。
     const abs = path.resolve(raw);
     if (isInside(skillsRoot, abs)) return abs;
-    // ③ 其余按工作区解析
+    // ④ 其余按工作区解析
     return resolveInside(workspace, raw, '读取');
   };
 
