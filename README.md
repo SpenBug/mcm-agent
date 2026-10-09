@@ -14,8 +14,43 @@
 </p>
 
 <p align="center">
-  <img src="build/icon.png" alt="icon" width="120">
+  <b>下载</b> · <a href="#下载安装">安装版</a> ·
+  <a href="#一它解决什么">功能</a> ·
+  <a href="#三五步流水线">工作流</a> ·
+  <a href="#四ai-工具使用声明2026-起是硬性要求">AI 声明合规</a> ·
+  <a href="#八给卖家卡密与发卡">卖家发卡</a> ·
+  <a href="#九文档">文档</a>
 </p>
+
+<p align="center">
+  <img src="docs/screenshots/01-workbench.png" alt="阿一古数模主界面：四类材料槽位 + 五步流程 + 赛事倒计时" width="880">
+  <br/>
+  <sub>主界面：四类材料分别提交 → 五步流水线自动推进 · 顶栏实时显示当前赛事与倒计时</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/03-execution.png" alt="Agent 在本机真实运行 Python 代码出图" width="880">
+  <br/>
+  <sub>代码在**你本机真实运行**（不是让模型"编"结果）：运行卡片可展开看完整代码与 stdout</sub>
+</p>
+
+---
+
+## 目录
+
+- [下载安装](#下载安装)
+- [一、它解决什么](#一它解决什么)
+- [二、赛事日历与定价](#二赛事日历与定价)
+- [三、邀请有礼](#三邀请有礼)
+- [四、五步流水线](#四五步流水线)
+- [五、AI 工具使用声明（2026 起是硬性要求）](#五ai-工具使用声明2026-起是硬性要求)
+- [六、架构](#六架构)
+- [七、内置技能库](#七内置技能库)
+- [八、开发与测试](#八开发与测试)
+- [九、给卖家：卡密与发卡](#九给卖家卡密与发卡)
+- [十、文档](#十文档)
+- [十一、二次开发提示](#十一二次开发提示)
+- [十二、License](#十二license)
 
 ---
 
@@ -86,7 +121,7 @@
 
 ---
 
-## 二·五、邀请有礼
+## 三、邀请有礼
 
 每个用户都有自己的**邀请码 = 卡号后 6 位**（如 `MCM-2026-0005` → `260005`），
 在侧栏「邀请有礼」里**显眼展示 + 一键复制分享**。
@@ -103,7 +138,7 @@
 
 ---
 
-## 三、五步流水线
+## 四、五步流水线
 
 ```mermaid
 flowchart LR
@@ -155,6 +190,18 @@ flowchart LR
 
 也可以只跑单个环节（只做题目分析 / 只写代码出图 / 只写论文）。
 
+<p align="center">
+  <img src="docs/screenshots/02-analysis.png" alt="题目分析完成，产出报告与图表" width="880">
+  <br/>
+  <sub>② 建模 → ③ 求解出图 完成：报告与图表落到 <code>reports/</code> 与 <code>figures/</code>，可点开预览</sub>
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/04-preview.png" alt="文件树与图表预览" width="880">
+  <br/>
+  <sub>左侧文件树 + 右侧预览：产出的图与论文都在工作区里，可直接打开</sub>
+</p>
+
 ### 提问方式：`@{}` 引用与草稿
 
 输入 `@{` 会弹出候选列表，直接引用已提交的材料，不用抄文件名：
@@ -172,7 +219,7 @@ flowchart LR
 
 ---
 
-## 四、AI 工具使用声明（2026 起是硬性要求）
+## 五、AI 工具使用声明（2026 起是硬性要求）
 
 全国大学生数学建模竞赛《[人工智能工具使用规定（2026 年试行）](https://www.mcm.edu.cn/html_cn/node/fef94648f2836ab6cc81586f4c38512b.html)》
 （2026-09-01 起试行）要求：
@@ -190,9 +237,15 @@ flowchart LR
 
 > 华为杯同样允许 AI，但要求所有引用（含程序、AI 产品）注明来源；美赛需在报告中声明。三者措辞已分别内置。
 
+<p align="center">
+  <img src="docs/screenshots/05-settings.png" alt="设置页：自填 API Key、Base URL、模型" width="880">
+  <br/>
+  <sub>设置页：自填 API Key / Base URL / 模型 —— 兼容任何 OpenAI 协议网关，也可用本地模型</sub>
+</p>
+
 ---
 
-## 五、架构
+## 六、架构
 
 ```mermaid
 flowchart TB
@@ -239,7 +292,7 @@ flowchart TB
 
 ---
 
-## 六、内置技能库
+## 七、内置技能库
 
 | 技能 | 内容 | 文件数 |
 |---|---|---|
@@ -252,13 +305,13 @@ flowchart TB
 
 ---
 
-## 七、开发与测试
+## 八、开发与测试
 
 ```bash
 npm install
 npm start              # 启动（无 GPU 环境用 npm run start:nogpu）
 
-npm test               # 聚合离线测试（17 套，不需要图形界面）
+npm test               # 聚合离线测试（23 套，不需要图形界面）
 npm run smoke          # 端到端：UI + IPC + 真实 Python/draw.io 导出
 ```
 
@@ -306,7 +359,7 @@ npm run verify:icon    # 从 exe 里反查内嵌图标是不是当前品牌图�
 
 ---
 
-## 八、给卖家：卡密与发卡
+## 九、给卖家：卡密与发卡
 
 **架构**：客户端只内嵌**公钥**（只能验签、不能伪造），私钥永远在你手里。
 
@@ -332,7 +385,7 @@ npm run verify:icon    # 从 exe 里反查内嵌图标是不是当前品牌图�
 
 ---
 
-## 九、文档
+## 十、文档
 
 - [**开发与发版 SOP**](docs/SOP-开发与发版.md) —— ★ 环境坑、发版步骤、守卫清单（**活文档，随时更新**）
 - [用户指南](docs/用户指南.md) —— 安装、配 Key、跑第一道题
@@ -345,7 +398,7 @@ npm run verify:icon    # 从 exe 里反查内嵌图标是不是当前品牌图�
 
 ---
 
-## 十、二次开发提示
+## 十一、二次开发提示
 
 | 想改什么 | 改哪里 |
 |---|---|
@@ -361,6 +414,6 @@ npm run verify:icon    # 从 exe 里反查内嵌图标是不是当前品牌图�
 
 ---
 
-## 十一、License
+## 十二、License
 
 [MIT](LICENSE) © 2026 SpenBug
