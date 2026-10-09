@@ -377,5 +377,23 @@ main().catch((err) => {
     console.error('  · 杀毒软件把项目目录加入实时扫描排除项');
     console.error('  · 确认没有正在运行的 阿一古数模.exe / 上一轮打包进程');
   }
+  // 错误原文落盘。
+  // ⚠️ 为什么需要：本脚本的 stderr 会经过调用方的管道（PowerShell 的
+  // Select-String / 2>&1 等），**多层过滤很容易把堆栈整段丢掉** ——
+  // 本轮实测两次只看到一行空的"[build] 失败："，根因无从追查。
+  // 落盘之后无论管道怎么过滤，原文都在。
+  try {
+    const log = path.join(ROOT, 'dist', 'build-error.log');
+    fs.mkdirSync(path.dirname(log), { recursive: true });
+    fs.writeFileSync(log, [
+      `时间: ${new Date().toISOString()}`,
+      `版本: ${require(path.join(ROOT, 'package.json')).version}`,
+      `退出码前的错误:`,
+      err && err.stack ? err.stack : String(err),
+      '',
+      '（完整构建输出见终端；此处只落错误原文）',
+    ].join('\n'), 'utf8');
+    console.error(`\n  错误原文已写入：${path.relative(ROOT, log)}`);
+  } catch { /* 落盘失败不影响退出码 */ }
   process.exit(1);
 });
