@@ -2,7 +2,7 @@
 
 三栏骨架：**左＝研究阶段链**（渐变旗标，自上而下推进）、**中＝研究内容**（若干虚线大块，每块一个绿色标题条 + 若干版式段）、**右＝研究方法**（绿色方法清单，与内容块对应）。画布宽固定 1026，高度按内容自动生长。
 
-渲染：`python3 scripts/framework_3col.py content.json -o out.drawio`（写文件前逐槽校验中文字宽，超框报出预算；`--check` 只校验）。
+渲染：`python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/framework_3col.py" content.json -o out.drawio`（写文件前逐槽校验中文字宽，超框报出预算；`--check` 只校验）。
 
 - [一、语义约定](#一语义约定)
 - [二、顶层字段](#二顶层字段)

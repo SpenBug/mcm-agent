@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """framework-3col：三栏式研究框架图（左阶段链 / 中研究内容 / 右研究方法）。
 
-    python3 framework_3col.py content.json -o out.drawio
-    python3 framework_3col.py content.json --check
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/framework_3col.py" content.json -o out.drawio
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/framework_3col.py" content.json --check
 
 画布宽 1026 固定，高度按内容自动生长。中栏每个内容块由若干"版式段"拼成，
 段类型见 references/framework-3col.md。写文件前逐槽做中文字宽校验。

@@ -3,7 +3,7 @@
 每块 = 实色标题条 + 齿孔虚线外框 + 若干行流程小盒；块间绿色粗箭头推进。
 半宽块成对并排（如问题一/问题二），其余整行。画布宽 1080。
 
-渲染：`python3 scripts/qblocks_flow.py content.json -o out.drawio`（`--check` 只校验）。
+渲染：`python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/qblocks_flow.py" content.json -o out.drawio`（`--check` 只校验）。
 
 - [一、语义约定](#一语义约定)
 - [二、字数预算](#二字数预算)

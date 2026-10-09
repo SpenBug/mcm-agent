@@ -4,7 +4,7 @@
 右=本任务产出）；带内钢蓝虚线圆角子区并排（深蓝标题居中 + 橙沙色流程盒行，行间细黑
 箭头）；带间黑色粗箭头推进。子区可带 `"w"` 权重控制相对宽度（默认等分）。画布宽 1080。
 
-渲染：`python3 scripts/task_bands.py content.json -o out.drawio`（`--check` 只校验）。
+渲染：`python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/task_bands.py" content.json -o out.drawio`（`--check` 只校验）。
 
 - [一、语义约定](#一语义约定)
 - [二、字数预算](#二字数预算)

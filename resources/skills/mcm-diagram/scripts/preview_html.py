@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """preview_html.py — 在浏览器里预览 .drawio（不依赖 draw.io 桌面版）。
 
-    python3 preview_html.py fig.drawio             # 生成预览页并起本地服务
-    python3 preview_html.py fig.drawio --no-serve  # 只生成 HTML
-    python3 preview_html.py fig.drawio --port 8790
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/preview_html.py" fig.drawio             # 生成预览页并起本地服务
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/preview_html.py" fig.drawio --no-serve  # 只生成 HTML
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/preview_html.py" fig.drawio --port 8790
 
 优先用 `export_figure.py` 出 1:1 PNG 自检；本脚本用于没装 drawio 命令行、或想在浏览器里
 直接改图的场景。XML 内联进页面再 postMessage 给 embed.diagrams.net，避免把整张图塞进 URL

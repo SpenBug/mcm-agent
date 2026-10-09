@@ -3,7 +3,7 @@
 第一部分…第N部分：彩色圆角虚线分区 + 框内同色章节标题 + 浅色流程盒行 +
 行下可挂说明小字；分区之间绿色双箭头（>>）推进。半宽分区成对并排。画布宽 1080。
 
-渲染：`python3 scripts/part_zones.py content.json -o out.drawio`（`--check` 只校验）。
+渲染：`python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/part_zones.py" content.json -o out.drawio`（`--check` 只校验）。
 
 - [一、语义约定](#一语义约定)
 - [二、字数预算](#二字数预算)

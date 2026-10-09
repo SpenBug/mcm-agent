@@ -3,7 +3,7 @@
 step1…stepN 横排：彩色圆角虚线分区 + 框顶同色 step 标题 + 内部流程盒行
 （行间细灰箭头，可标 emph 实色强调盒）；分区之间蓝白粗块箭头推进。画布宽 1080。
 
-渲染：`python3 scripts/step_zones.py content.json -o out.drawio`（`--check` 只校验）。
+渲染：`python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/step_zones.py" content.json -o out.drawio`（`--check` 只校验）。
 
 - [一、语义约定](#一语义约定)
 - [二、字数预算](#二字数预算)

@@ -171,9 +171,9 @@ window.__calls = [];
 const rec = (n) => (...a) => { window.__calls.push([n, ...a]); return Promise.resolve({}); };
 window.mcm = {
   config: { get: () => Promise.resolve({ config: { provider:'deepseek', model:'deepseek-chat',
-              workspace:'C:\\Users\\92182\\Documents\\阿一古数模工作区', hasApiKey: true }, skillsRoot:'S' }),
+              workspace:'C:\\Users\\你的用户名\\Documents\\阿一古数模工作区', hasApiKey: true }, skillsRoot:'S' }),
             save: rec('config.save'), test: rec('config.test') },
-  workspace: { ensure: () => Promise.resolve('C:\\Users\\92182\\Documents\\阿一古数模工作区'),
+  workspace: { ensure: () => Promise.resolve('C:\\Users\\你的用户名\\Documents\\阿一古数模工作区'),
                choose: () => Promise.resolve(null),
                list: () => Promise.resolve([]), openPath: rec('w.openPath'), reveal: rec('w.reveal'),
                read: () => Promise.resolve(''), dataUrl: () => Promise.resolve('') },

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """trihead-flow：三栏绿头流程图（绿实色标题栏 + 浅绿栏体 + 蓝系流程盒）。
 
-    python3 trihead_flow.py content.json -o out.drawio
-    python3 trihead_flow.py content.json --check
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/trihead_flow.py" content.json -o out.drawio
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/trihead_flow.py" content.json --check
 
 复刻自"任务思路流程图"：每栏顶部一条绿实色标题栏，栏体浅绿底；
 栏内自上而下流程盒（蓝系三档深浅，粗蓝下箭头），支持

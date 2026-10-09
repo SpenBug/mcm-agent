@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """step-zones：step 分区流程图（step1…stepN 彩色虚线圆角分区横排）。
 
-    python3 step_zones.py content.json -o out.drawio
-    python3 step_zones.py content.json --check
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/step_zones.py" content.json -o out.drawio
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/step_zones.py" content.json --check
 
 复刻自"step 三段"流程图：每个分区一条彩色圆角虚线框 + 框顶同色 step 标题，
 内部为流程小盒行（行间细灰下箭头，可标 emph 实色强调盒）；

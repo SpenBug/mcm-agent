@@ -4,7 +4,7 @@
 支持橙虚线特征组（组标题 + 小盒阵列 + 两侧竖排标签）与底部图表占位；
 栏间黑色粗箭头推进。画布宽 1080。
 
-渲染：`python3 scripts/trihead_flow.py content.json -o out.drawio`（`--check` 只校验）。
+渲染：`python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/trihead_flow.py" content.json -o out.drawio`（`--check` 只校验）。
 
 - [一、语义约定](#一语义约定)
 - [二、字数预算](#二字数预算)

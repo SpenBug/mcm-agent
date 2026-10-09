@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """part-zones：章节分区路线图（第一部分…第N部分，彩色虚线分区 + 绿色双箭头推进）。
 
-    python3 part_zones.py content.json -o out.drawio
-    python3 part_zones.py content.json --check
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/part_zones.py" content.json -o out.drawio
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/part_zones.py" content.json --check
 
 复刻自"整体思路流程图"：每个分区一条彩色圆角虚线框 + 框内同色章节标题，
 内容为浅色流程小盒（行间下箭头），可在行下挂说明性小字注释；

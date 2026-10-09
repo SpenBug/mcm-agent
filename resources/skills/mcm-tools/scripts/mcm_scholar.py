@@ -6,9 +6,9 @@
     crossref   备用源，DOI 权威
 
 用法:
-    python mcm_scholar.py search "vehicle routing problem multi-objective" --limit 8
-    python mcm_scholar.py search "城市配送 路径规划" --limit 5 --year-from 2018 --json
-    python mcm_scholar.py get 10.1016/j.ejor.2019.01.001
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_scholar.py" search "vehicle routing problem multi-objective" --limit 8
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_scholar.py" search "城市配送 路径规划" --limit 5 --year-from 2018 --json
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_scholar.py" get 10.1016/j.ejor.2019.01.001
 
 输出会带 **可直接粘进参考文献的条目**（按常见竞赛要求的句式）。
 ⚠️ 生成的是**待核对草稿** —— 作者名、卷期页码必须对着原文核一遍再进论文。

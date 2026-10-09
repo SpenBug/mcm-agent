@@ -58,7 +58,7 @@
 两张产物都要，落在 `figures/`：
 
 ```bash
-python3 scripts/export_figure.py figures/fig_roadmap.drawio     # 1:1 PNG + 矢量 PDF
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/export_figure.py" figures/fig_roadmap.drawio     # 1:1 PNG + 矢量 PDF
 ```
 
 上游要求的是论文可引用的 crop PDF；`export_figure.py` 会一次出 PNG + PDF。
@@ -93,7 +93,7 @@ drawio figures/fig_roadmap.drawio --no-sandbox --disable-gpu --disable-software-
 两道关都要过：
 
 ```bash
-python3 scripts/check_layout.py figures/fig_roadmap.drawio --strict
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/check_layout.py" figures/fig_roadmap.drawio --strict
 ```
 
 | 检查 | 谁负责 |

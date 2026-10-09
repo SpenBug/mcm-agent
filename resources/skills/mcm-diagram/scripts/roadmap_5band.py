@@ -2,8 +2,8 @@
 """Render a 5-band research roadmap (.drawio) from a content JSON file.
 
 Usage:
-    python3 render_roadmap.py content.json -o out.drawio
-    python3 render_roadmap.py content.json --check      # capacity check only, no write
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/roadmap_5band.py" content.json -o out.drawio
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/roadmap_5band.py" content.json --check   # capacity check only, no write
 
 Geometry is a fixed 954x1296 template measured from a reference figure; only the
 number of items inside each family is variable (2-5 depending on the family).

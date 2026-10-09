@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """export_figure.py — 把 .drawio 导成 1:1 PNG 与矢量 PDF，供肉眼自检和交付。
 
-    python3 export_figure.py fig.drawio                 # 出 fig.png + fig.pdf
-    python3 export_figure.py fig.drawio --png-only -s 2 # 只出 2 倍图，便于看细节
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/export_figure.py" fig.drawio                 # 出 fig.png + fig.pdf
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/export_figure.py" fig.drawio --png-only -s 2 # 只出 2 倍图，便于看细节
 
 依赖 draw.io 桌面版命令行（macOS: brew install --cask drawio；命令名 drawio）。
 没装时会给出替代方案，不静默失败。

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """qblocks-flow：分问题流程图（问题一…问题N，半宽并排 + 整行块）。
 
-    python3 qblocks_flow.py content.json -o out.drawio
-    python3 qblocks_flow.py content.json --check
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/qblocks_flow.py" content.json -o out.drawio
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/qblocks_flow.py" content.json --check
 
 复刻自横版"分问题"技术路线图：每块顶部一条实色标题条 + 齿孔虚线外框，
 块内是若干行流程小盒（行间绿色下箭头、行内可选绿色右箭头链），

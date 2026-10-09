@@ -3,8 +3,8 @@
 `scripts/check_layout.py` 在**看渲染图之前**先用几何算一遍。它存在的理由很简单：写 XML 的人看不见成品，而下面这些缺陷全都能从坐标和字符算出来，不必等截图。
 
 ```bash
-python3 scripts/check_layout.py fig.drawio            # 体检
-python3 scripts/check_layout.py fig.drawio --strict   # WARN 也算失败，可作交付门禁
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/check_layout.py" fig.drawio            # 体检
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/check_layout.py" fig.drawio --strict   # WARN 也算失败，可作交付门禁
 ```
 
 ## FAIL（必须清零）

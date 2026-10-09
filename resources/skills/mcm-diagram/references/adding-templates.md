@@ -27,8 +27,8 @@ for i, sl in enumerate(ndimage.find_objects(lab), 1):
 放 `scripts/<template_id>.py`，CLI 固定：
 
 ```bash
-python3 scripts/<template_id>.py content.json -o out.drawio
-python3 scripts/<template_id>.py content.json --check      # 只校验不写
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/<template_id>.py" content.json -o out.drawio
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/<template_id>.py" content.json --check      # 只校验不写
 ```
 
 必须做到：

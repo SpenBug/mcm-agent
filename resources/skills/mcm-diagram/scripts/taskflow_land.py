@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """taskflow-land：横版任务流水线图（若干任务块，块内横向/纵向流水线，块间粗箭头串联）。
 
-    python3 taskflow_land.py content.json -o out.drawio
-    python3 taskflow_land.py content.json --check
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/taskflow_land.py" content.json -o out.drawio
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/taskflow_land.py" content.json --check
 
 适合"一个课题拆成若干任务、每个任务是一条处理链、每步下面还要挂做法细节"的场合。
 横版画布，宽固定 1360，高度按内容自动生长。段型见 references/taskflow-land.md。

@@ -8,11 +8,11 @@
   - PDF 按页读，题目的「附件1 第 3 页」这种指代要能精确定位。
 
 用法:
-    python mcm_io.py pdf   input/赛题.pdf --pages 1-3
-    python mcm_io.py xlsx  input/附件1.xlsx --sheet 0 --head 10
-    python mcm_io.py xlsx  input/附件1.xlsx --expect-rows 7470
-    python mcm_io.py csv   input/data.csv --head 5
-    python mcm_io.py info  input/          # 列出目录下所有可读材料
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" pdf   input/赛题.pdf --pages 1-3
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" xlsx  input/附件1.xlsx --sheet 0 --head 10
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" xlsx  input/附件1.xlsx --expect-rows 7470
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" csv   input/data.csv --head 5
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_io.py" info  input/          # 列出目录下所有可读材料
 
 退出码: 0 成功 / 1 参数或依赖问题 / 2 读取失败 / 3 断言不符
 """

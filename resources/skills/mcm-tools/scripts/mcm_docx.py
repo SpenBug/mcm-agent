@@ -7,10 +7,10 @@
     check    检查产出：标题层级、图/表编号是否连续、有无未替换占位符
 
 用法:
-    python mcm_docx.py inspect input/论文模板.docx
-    python mcm_docx.py build paper.docx --spec reports/paper_spec.json
-    python mcm_docx.py build paper.docx --template input/论文模板.docx --spec reports/paper_spec.json
-    python mcm_docx.py check paper.docx
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_docx.py" inspect input/论文模板.docx
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_docx.py" build paper.docx --spec reports/paper_spec.json
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_docx.py" build paper.docx --template input/论文模板.docx --spec reports/paper_spec.json
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_docx.py" check paper.docx
 
 spec 格式（JSON）:
     {

@@ -39,15 +39,15 @@ allowed-tools: Bash(*), Read, Write, Edit, Grep, Glob
 4. 渲染（写文件前逐槽校验字数，超框报出具体预算）：
 
 ```bash
-python3 scripts/roadmap_5band.py content.json -o out.drawio     # 模板 roadmap-5band
-python3 scripts/framework_3col.py content.json -o out.drawio    # 模板 framework-3col
-python3 scripts/stageflow_3col.py content.json -o out.drawio    # 模板 stageflow-3col
-python3 scripts/taskflow_land.py  content.json -o out.drawio    # 模板 taskflow-land（横版）
-python3 scripts/qblocks_flow.py   content.json -o out.drawio    # 模板 qblocks-flow（分问题流程图）
-python3 scripts/task_bands.py     content.json -o out.drawio    # 模板 task-bands（任务带路线图）
-python3 scripts/part_zones.py     content.json -o out.drawio    # 模板 part-zones（章节分区路线图）
-python3 scripts/trihead_flow.py   content.json -o out.drawio    # 模板 trihead-flow（三栏绿头流程图）
-python3 scripts/step_zones.py     content.json -o out.drawio    # 模板 step-zones（step分区流程图）
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/roadmap_5band.py" content.json -o out.drawio     # 模板 roadmap-5band
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/framework_3col.py" content.json -o out.drawio    # 模板 framework-3col
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/stageflow_3col.py" content.json -o out.drawio    # 模板 stageflow-3col
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/taskflow_land.py"  content.json -o out.drawio    # 模板 taskflow-land（横版）
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/qblocks_flow.py"   content.json -o out.drawio    # 模板 qblocks-flow（分问题流程图）
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/task_bands.py"     content.json -o out.drawio    # 模板 task-bands（任务带路线图）
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/part_zones.py"     content.json -o out.drawio    # 模板 part-zones（章节分区路线图）
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/trihead_flow.py"   content.json -o out.drawio    # 模板 trihead-flow（三栏绿头流程图）
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/step_zones.py"     content.json -o out.drawio    # 模板 step-zones（step分区流程图）
 ```
 
 新增模板见 `references/adding-templates.md`。
@@ -77,10 +77,10 @@ python3 scripts/step_zones.py     content.json -o out.drawio    # 模板 step-zo
 ## 通用：校验、预览、导出
 
 ```bash
-python3 scripts/check_layout.py fig.drawio      # 溢出/越界/重复 id/重叠/穿盒/位图（--strict 作门禁）
-python3 scripts/export_figure.py fig.drawio     # 1:1 PNG + 矢量 PDF（自动探测 drawio 命令行）
-python3 scripts/export_figure.py fig.drawio --no-gpu   # 虚拟机/远程桌面/容器加软件渲染兜底
-python3 scripts/preview_html.py fig.drawio      # 浏览器预览（依赖 diagrams.net 在线服务，离线会空白）
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/check_layout.py" fig.drawio      # 溢出/越界/重复 id/重叠/穿盒/位图（--strict 作门禁）
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/export_figure.py" fig.drawio     # 1:1 PNG + 矢量 PDF（自动探测 drawio 命令行）
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/export_figure.py" fig.drawio --no-gpu   # 虚拟机/远程桌面/容器加软件渲染兜底
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/preview_html.py" fig.drawio      # 浏览器预览（依赖 diagrams.net 在线服务，离线会空白）
 ```
 
 **两条容易踩的**：

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """check_layout.py — 对任意 .drawio 做版式体检（针对中文示意图调校）。
 
-    python3 check_layout.py fig.drawio            # 体检
-    python3 check_layout.py fig.drawio --strict   # WARN 也算失败
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/check_layout.py" fig.drawio            # 体检
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/check_layout.py" fig.drawio --strict   # WARN 也算失败
 
 FAIL：文字溢出、元素越界、id 重复、盒子重叠、连线穿盒、内嵌位图。
 WARN：端点压在盒边、疑似空盒、字号种类过多、填充色发散。

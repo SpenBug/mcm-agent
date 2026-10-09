@@ -2,7 +2,7 @@
 
 若干**任务块**（黑色虚线框 + 框外左上标题），块内是一条处理链，链上每一步下面可以挂"做法细节"面板；块与块之间用粗块箭头串联。横版画布宽固定 1360，高度按内容自动生长。
 
-渲染：`python3 scripts/taskflow_land.py content.json -o out.drawio`（写前逐槽校验中文字宽；`--check` 只校验）。
+渲染：`python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/taskflow_land.py" content.json -o out.drawio`（写前逐槽校验中文字宽；`--check` 只校验）。
 
 - [一、什么时候用它](#一什么时候用它)
 - [二、视觉语言](#二视觉语言)

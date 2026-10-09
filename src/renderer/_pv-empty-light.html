@@ -138,9 +138,9 @@ window.__store = {
 };
 window.mcm = {
   config: { get: () => Promise.resolve({ config: { provider:'deepseek', model:'deepseek-chat',
-              workspace:'C:\\Users\\92182\\Documents\\阿一古数模工作区', hasApiKey: true }, skillsRoot:'S' }),
+              workspace:'C:\\Users\\你的用户名\\Documents\\阿一古数模工作区', hasApiKey: true }, skillsRoot:'S' }),
             save: rec('config.save'), test: rec('config.test') },
-  workspace: { ensure: () => Promise.resolve('C:\\Users\\92182\\Documents\\阿一古数模工作区'),
+  workspace: { ensure: () => Promise.resolve('C:\\Users\\你的用户名\\Documents\\阿一古数模工作区'),
                choose: () => Promise.resolve(null),
                list: () => Promise.resolve([{ name:'input', kind:'dir' }, { name:'code', kind:'dir' },
                  { name:'figures', kind:'dir' }, { name:'results', kind:'dir' }, { name:'reports', kind:'dir' }]),

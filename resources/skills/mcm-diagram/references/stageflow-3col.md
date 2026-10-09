@@ -2,7 +2,7 @@
 
 三栏骨架：**左＝研究方法链**（白底竖排方框 + 深蓝粗箭头逐级推进）、**中＝彩色流程块**（每块一条实色标题条 + 独立色系的内部结构）、**右＝阶段说明**（左向块箭头，箭头体内竖排文字，指入对应的内容块）。画布宽固定 1000，高度按内容自动生长。
 
-渲染：`python3 scripts/stageflow_3col.py content.json -o out.drawio`（写前逐槽校验中文字宽；`--check` 只校验）。
+渲染：`python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/stageflow_3col.py" content.json -o out.drawio`（写前逐槽校验中文字宽；`--check` 只校验）。
 
 - [一、与 framework-3col 怎么选](#一与-framework-3col-怎么选)
 - [二、语义约定](#二语义约定)

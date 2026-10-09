@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """task-bands：任务带技术路线图（任务一…任务N 纵向条带）。
 
-    python3 task_bands.py content.json -o out.drawio
-    python3 task_bands.py content.json --check
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/task_bands.py" content.json -o out.drawio
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/task_bands.py" content.json --check
 
 复刻自"任务一带状"技术路线图：每条带左侧橙红竖排任务签、右侧红边竖排阶段签，
 带内若干蓝虚线子区并排（子区标题 + 内部流程小盒行，行间细下箭头），

@@ -114,7 +114,7 @@ draw.io 的自动折行对中文很不友好，**一律手动断行**并自己�
 写完用体检脚本兜住：
 
 ```bash
-python3 scripts/check_layout.py fig.drawio
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/check_layout.py" fig.drawio
 ```
 
 查文字溢出、越界、id 重复、端点压边、盒子重叠、连线穿盒，中文字宽模型与上面一致。
@@ -170,8 +170,8 @@ shape=image;html=1;imageAspect=1;verticalLabelPosition=bottom;image=data:image/s
 **不看渲染图就不算画完。** XML 里看不出文字溢出、箭头压字、盒子挤扁。
 
 ```bash
-python3 scripts/check_layout.py fig.drawio          # 先过机器体检
-python3 scripts/export_figure.py fig.drawio         # 出 1:1 PNG + 矢量 PDF
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/check_layout.py" fig.drawio          # 先过机器体检
+python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/export_figure.py" fig.drawio         # 出 1:1 PNG + 矢量 PDF
 ```
 
 然后打开 PNG 逐块核对，至少两轮：① 文字是否溢出/压线；② 箭头方向与语义是否一致（尤其分发、汇流、双向）；③ 同族元素是否对齐同宽；④ 数值有没有抄错。看细节可 `-s 2` 出双倍图，或用 Python 裁局部放大。

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """stageflow-3col：分阶段流程框架图（左方法链 / 中彩色流程块 / 右阶段说明）。
 
-    python3 stageflow_3col.py content.json -o out.drawio
-    python3 stageflow_3col.py content.json --check
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/stageflow_3col.py" content.json -o out.drawio
+    python "%MCM_SKILL_ROOT%/mcm-diagram/scripts/stageflow_3col.py" content.json --check
 
 与 framework-3col 的区别：中栏每块有**实色标题条**和独立色系，左右栏是**竖排文字**
 （左＝白底方框 + 粗箭头推进，右＝左向块箭头指入对应块）。段型见 references/stageflow-3col.md。

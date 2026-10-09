@@ -6,9 +6,9 @@
     compile  用 latexmk 编译成 PDF，并检查产物
 
 用法:
-    python mcm_latex.py build out/paper --spec reports/paper_spec.json
-    python mcm_latex.py compile out/paper/main.tex
-    python mcm_latex.py build out/paper --spec spec.json --compile
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_latex.py" build out/paper --spec reports/paper_spec.json
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_latex.py" compile out/paper/main.tex
+    python "%MCM_SKILL_ROOT%/mcm-tools/scripts/mcm_latex.py" build out/paper --spec spec.json --compile
 
 spec 与 mcm_docx.py 完全一致（同一份 spec 能出 Word 和 LaTeX 两版）。
 公式块 type=equation 时，LaTeX 版会**真的排成数学式**（Word 版只能当文本插）。
