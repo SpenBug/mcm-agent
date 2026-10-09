@@ -95,49 +95,70 @@ function ensureRealNode() {
 }
 
 /**
- * 打包前把 dist/ 里已有的产物全部挪进 dist/_stale/<时间戳>/。
+ * 打包前把 dist/ 里已有的**交付物**挪进 dist/_stale/<时间戳>/。
  *
- * 为什么连"当前版本号"的产物也要挪：本轮真实差点踩到 ——
- * dist/ 里躺着一个同名的 1.1.0 包，但它不含这轮的新功能。
- * 如果打包中途失败（网络断了就是这样），dist/ 根目录仍然有"看起来是最新"的包，
- * 拿去发版就是带着旧功能发布，而且版本号完全对得上，谁都发现不了。
- * 挪空之后，打包失败 = dist/ 是空的，状态一眼可分辨。
+ * 为什么要挪：本轮真实差点踩到 —— dist/ 里躺着一个同名的 1.1.0 包，
+ * 但它不含这轮的新功能。如果打包中途失败（网络断了就是这样），
+ * dist/ 根目录仍然有"看起来是最新"的包，拿去发版就是带着旧功能发布，
+ * 而且版本号完全对得上，谁都发现不了。挪空之后，
+ * 打包失败 = dist/ 根目录没有 exe，状态一眼可分辨。
  *
- * 为什么不直接删：那是用户花时间与带宽构建出来的交付物。
- * 但全留着会每轮堆 ~225MB，所以只保留最近 STALE_KEEP 批。
+ * ⚠️ **只挪交付物，不挪中间产物**：
+ * `win-unpacked/` 是 electron-builder 每次构建都重新生成的解包目录（约 390MB），
+ * 把它也归档等于每轮白占 390MB —— 实测 dist 因此涨到 1.2GB，
+ * 而归档批次里除了解包出来的主程序什么都没有，纯浪费。
+ * 中间产物直接删（下次构建会重建），`smoke:packaged` / `verify-package`
+ * 用的也是当前这次构建生成的那份。
+ *
+ * 为什么不删交付物：那是花时间与带宽构建出来的东西。但全留着会无限堆，
+ * 所以只保留最近 STALE_KEEP 批（注意 dist/ 已被 gitignore，git 里没有副本）。
  */
-// 只保留最近 1 批：一批就有安装包 + 便携版 + 解包目录 ≈ 350MB。
-// 注意 dist/ 已被 gitignore，git 里没有副本，所以这里删掉就是真没了 ——
-// 因此只删"本脚本自己生成的时间戳批次"，其余一律不碰（见下面的 _legacy）。
 const STALE_KEEP = 1;
 /** 本脚本生成的批次目录名（ISO 时间戳，把 : 和 . 换成 - 以便做文件名） */
 const BATCH_RE = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/;
+/** 可再生、无需归档的中间产物 */
+const REGENERABLE = new Set(['win-unpacked', 'win-ia32-unpacked', 'win-arm64-unpacked']);
 
 function cleanStale() {
   const distDir = path.join(ROOT, 'dist');
   if (!fs.existsSync(distDir)) return;
 
-  // 1. 半成品目录：electron-builder 失败留下的，行为不稳定，直接删
+  // 1. 半成品目录与中间产物：electron-builder 每次重建，留着只占地方
   for (const name of fs.readdirSync(distDir)) {
-    if (name.endsWith('.tmp') || name === 'win-undefined-unpacked' || name.includes('-undefined.')) {
+    const isHalf = name.endsWith('.tmp') || name === 'win-undefined-unpacked' || name.includes('-undefined.');
+    const isRegenerable = REGENERABLE.has(name);
+    if (isHalf || isRegenerable) {
       fs.rmSync(path.join(distDir, name), { recursive: true, force: true });
-      console.log(`[build] 清理半成品：${name}`);
+      console.log(`[build] 清理${isHalf ? '半成品' : '可再生中间产物'}：${name}`);
     }
   }
 
   const staleRoot = path.join(distDir, '_stale');
 
-  // 2. 已有产物整体挪走
+  // 2. 剩下的（安装包 / 便携版 / yml）才是交付物，整体挪走
   const movable = fs.readdirSync(distDir).filter((n) => n !== '_stale');
   if (movable.length) {
     const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const batch = path.join(staleRoot, stamp);
     fs.mkdirSync(batch, { recursive: true });
     for (const name of movable) fs.renameSync(path.join(distDir, name), path.join(batch, name));
-    console.log(`[build] ${movable.length} 项已有产物移入 dist/_stale/${stamp}/`);
+    console.log(`[build] ${movable.length} 项交付物移入 dist/_stale/${stamp}/`);
   }
 
-  // 3. 上一版方案是把旧产物直接丢在 _stale/ 下面（不带批次目录）。
+  // 3. 历史遗留：早先的归档批次里混进过 win-unpacked（本脚本早期的设计缺陷），
+  //    顺手清掉，别让那 390MB 一直躺着。
+  if (fs.existsSync(staleRoot)) {
+    for (const batch of fs.readdirSync(staleRoot)) {
+      if (!BATCH_RE.test(batch)) continue;
+      const p = path.join(staleRoot, batch, 'win-unpacked');
+      if (fs.existsSync(p)) {
+        fs.rmSync(p, { recursive: true, force: true });
+        console.log(`[build] 清掉历史归档里的解包目录：_stale/${batch}/win-unpacked`);
+      }
+    }
+  }
+
+  // 4. 上一版方案是把旧产物直接丢在 _stale/ 下面（不带批次目录）。
   //    那些是用户的交付物，**不能因为"看起来不像本脚本生成的"就被清理逻辑删掉**，
   //    所以收进 _legacy/ 永久保留。
   if (fs.existsSync(staleRoot)) {
