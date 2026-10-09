@@ -74,7 +74,14 @@ function seedWorkspace() {
 /* mock LLM：按剧本三步走                                             */
 /* ---------------------------------------------------------------- */
 
-function startMockLlm(skillsRoot) {
+/**
+ * mock LLM：按剧本返回固定响应。
+ *
+ * 刻意**不接收 skillsRoot**：早先版本把它插进演示代码里，
+ * 导致截图带上真实的 C:\Users\<用户名>\... 路径（见 chartCode 的注释）。
+ * 演示代码改用 %MCM_SKILL_ROOT% 占位符后，这个参数就没有用处了。
+ */
+function startMockLlm() {
   const received = [];
   const report = [
     '# 题目分析报告',
@@ -103,7 +110,15 @@ function startMockLlm(skillsRoot) {
     "matplotlib.use('Agg')",
     "import matplotlib.pyplot as plt",
     "ROOT = os.environ.get('MCM_WORKSPACE') or os.getcwd()",
-    `sys.path.insert(0, os.path.join(r'${skillsRoot.replace(/\\/g, '\\\\')}', 'mcm-figure', 'scripts'))`,
+    // ⚠️ 这里必须用**占位符**，不能插真实 skillsRoot。
+    //    这段代码会原样出现在宣传截图里并发布到 GitHub，
+    //    而 skillsRoot 的真实值是
+    //    C:\Users\<你的用户名>\AppData\Roaming\<品牌>\skills ——
+    //    插进去等于把 Windows 用户名（有时还有旧品牌目录名）印在公开截图上。
+    //    实测踩过：第一版截图里赫然写着 C:\Users\92182\AppData\Roaming\数模工坊\skills。
+    //    占位符反而更贴近真实用户写法：技能文档教的就是 %MCM_SKILL_ROOT% 这一套。
+    "SKILLS = os.environ.get('MCM_SKILL_ROOT', '')",
+    "sys.path.insert(0, os.path.join(SKILLS, 'mcm-figure', 'scripts'))",
     "import mcm_style; mcm_style.apply()",
     "df = pd.read_csv(os.path.join(ROOT, 'input', '数据', '附件1.csv'))",
     "print(df.groupby('作物').size())",
@@ -231,7 +246,7 @@ async function runPromoShots(win) {
   const sig = crypto.sign(null, Buffer.from(body), priv).toString('base64url');
   license.writeState(paths.getUserDataDir(), { credential: `${body}.${sig}` });
 
-  const { server, received } = await startMockLlm(paths.getSkillsRoot());
+  const { server, received } = await startMockLlm();
   const port = server.address().port;
 
   // 会话期间配置指向 mock LLM 与演示工作区（模型名展示用真实系列名，mock 不校验）
@@ -274,19 +289,50 @@ async function runPromoShots(win) {
     await capture(win, 'shot1_分析与写文件.png');
 
     // ── 点击文件树预览真实生成的图 ──
+    // ⚠️ 刷新是**异步**的（走 IPC 读目录），固定 sleep 猜时长会踩空。
+    //    更关键的是：文件树**只列顶层**，figures/ 是目录，
+    //    必须先点开它才能看到里面的 result_q1_1.png ——
+    //    原来直接找文件行，rows.find 永远返回 undefined，
+    //    预览没打开、shot3 与 shot1 成了同一画面（差 18 字节），
+    //    而日志只打一句 "preview 点击 => false" 就继续了 —— 静默产出废图。
+    //    现在：展开目录 → 轮询等文件行 → 拿不到就抛错。
     await win.webContents.executeJavaScript(`(() => {
       document.getElementById('btnRefreshFiles')?.click();
       return true;
     })()`);
-    await sleep(1200);
-    const previewOpened = await win.webContents.executeJavaScript(`(() => {
-      const rows = [...document.querySelectorAll('.tree-row')];
-      const t = rows.find(r => r.textContent.includes('result_q1_1.png'));
-      if (t) t.click();
-      return Boolean(t);
-    })()`);
+
+    const previewOpened = await (async () => {
+      for (let i = 0; i < 40; i += 1) {
+        const hit = await win.webContents.executeJavaScript(`(() => {
+          const rows = [...document.querySelectorAll('.tree-row')];
+          // ① 先确保 figures/ 目录已展开（未展开则点它，下一轮再来）
+          const dir = rows.find(r => r.querySelector('.nm')?.textContent.trim() === 'figures');
+          if (dir && dir.querySelector('.ic')?.textContent.trim() === '▸') {
+            dir.click();
+            return false;
+          }
+          // ② 目录展开后再找目标文件
+          const t = rows.find(r => r.textContent.includes('result_q1_1.png'));
+          if (!t) return false;
+          t.click();
+          return true;
+        })()`);
+        if (hit) return true;
+        await sleep(500);
+      }
+      return false;
+    })();
+
+    if (!previewOpened) {
+      throw new Error(
+        '截图失败：文件树里找不到 figures/result_q1_1.png，预览没打开 —— '
+        + 'shot3 会与 shot1 重复。检查演示脚本是否真的产出了该文件，'
+        + '或渲染层的 .tree-row / 目录展开逻辑是否变了。',
+      );
+    }
     console.log('preview 点击 =>', previewOpened);
-    await sleep(2800);
+    // 等图片解码完再截，否则抓到空白预览区
+    await sleep(3000);
     await capture(win, 'shot3_文件树与图表预览.png');
 
     // ── 设置抽屉：先恢复真实配置再截，展示的是用户自己的服务商与模型 ──
