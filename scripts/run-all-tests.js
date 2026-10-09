@@ -38,26 +38,31 @@ const SUITES = [
   ['版本号与下载链接一致', 'scripts/check-version-consistency.js'],
   ['SOP 文档事实核对', 'scripts/check-sop-facts.js'],
   ['文档图表与换行符', 'scripts/check-doc-diagrams.js'],
+  ['首屏空态动效', 'scripts/check-empty-state-motion.js'],
   ['签发器赛事选项与定价同源', 'scripts/sync-keygen-options.js', ['--check']],
   ['签发器与客户端密钥/定价一致', 'scripts/issuer-consistency-test.js'],
   ['签发器卡号与台账（keygen）', 'scripts/keygen-ledger-test.js'],
 ];
 
 /**
- * 反向守卫：scripts/ 下每个 *-test.js 都必须出现在 SUITES 里。
+ * 反向守卫：scripts/ 下每个 *-test.js 与 check-*.js 都必须出现在 SUITES 里。
  *
  * 为什么需要：本轮真实发生过两次"测试文件写了、跑过一次就忘了挂"，
  * 于是它再也不被执行，看起来"测试全绿"其实少了一整套断言。
  * 靠人记住挂哪个文件是防不住的，所以让漏挂直接变成失败。
+ *
+ * 覆盖到 check-*.js 是本轮补的：`check-empty-state-motion.js` 的名字先被写进
+ * styles.css 的注释里（"守卫盯着这条"），文件却还没落地 —— 注释承诺了一条
+ * 不存在的保护，比没写注释更糟。孤儿检查 + 守卫自己的"死指针"检查双向夹住它。
  */
 function assertNoOrphanTests() {
   const listed = new Set(SUITES.map(([, file]) => path.basename(file)));
   const orphans = fs
     .readdirSync(path.join(ROOT, 'scripts'))
-    .filter((f) => f.endsWith('-test.js') || f.endsWith('.test.js'))
+    .filter((f) => /(?:-test|\.test)\.js$/.test(f) || /^check-.+\.js$/.test(f))
     .filter((f) => !listed.has(f));
   if (orphans.length) {
-    console.error('\n✗ 有测试文件没挂进 SUITES，永远不会被跑：');
+    console.error('\n✗ 有测试/守卫文件没挂进 SUITES，永远不会被跑：');
     for (const o of orphans) console.error(`    scripts/${o}`);
     console.error('  修法：在 SUITES 里加一行 [\'名称\', `scripts/${文件}`]');
     process.exit(1);

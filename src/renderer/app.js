@@ -716,6 +716,12 @@
       <ellipse cx="130" cy="100" rx="104" ry="88" fill="url(#botGlow)"/>
       <ellipse cx="130" cy="186" rx="52" ry="9" fill="var(--brand)" opacity=".13"/>
 
+      <!-- bot-float：整组缓慢上下漂浮。
+         ⚠️ 漂浮必须挂在这个包装 <g> 上，不能挂到子节点 —— 子节点里
+         有 <g transform="translate(...)"> 的定位属性，CSS transform 会
+         **覆盖** SVG 的 transform 属性，直接动子节点会把图举飞。
+         整体动一个 <g> 也只有一层合成，不会逐节点重绘。 -->
+      <g class="bot-float">
       <!-- 身体 -->
       <rect x="98" y="118" width="64" height="60" rx="18"
             fill="var(--panel)" stroke="var(--brand)" stroke-width="1.6"/>
@@ -729,13 +735,14 @@
       <rect x="96" y="52" width="68" height="60" rx="20"
             fill="var(--panel)" stroke="var(--brand)" stroke-width="1.6"/>
       <path d="M130 52 V38" stroke="var(--brand)" stroke-width="1.6" stroke-linecap="round"/>
-      <circle cx="130" cy="33" r="4.5" fill="var(--viz-3)"/>
+      <!-- bot-bulb：天线小球呼吸（transform-box:fill-box 让 scale 以自身为中心） -->
+      <circle class="bot-bulb" cx="130" cy="33" r="4.5" fill="var(--viz-3)"/>
 
-      <!-- 眼睛 -->
-      <circle cx="115" cy="80" r="7.5" fill="var(--viz-6)" opacity=".20"/>
-      <circle cx="145" cy="80" r="7.5" fill="var(--viz-6)" opacity=".20"/>
-      <circle cx="115" cy="80" r="3.6" fill="var(--viz-6)"/>
-      <circle cx="145" cy="80" r="3.6" fill="var(--viz-6)"/>
+      <!-- 眼睛（bot-eye：隔很久眨一下） -->
+      <circle class="bot-eye" cx="115" cy="80" r="7.5" fill="var(--viz-6)" opacity=".20"/>
+      <circle class="bot-eye" cx="145" cy="80" r="7.5" fill="var(--viz-6)" opacity=".20"/>
+      <circle class="bot-eye" cx="115" cy="80" r="3.6" fill="var(--viz-6)"/>
+      <circle class="bot-eye" cx="145" cy="80" r="3.6" fill="var(--viz-6)"/>
       <path d="M120 94 q10 7 20 0" stroke="var(--brand)" stroke-width="1.8"
             stroke-linecap="round"/>
 
@@ -750,15 +757,22 @@
         <path d="M8 27 l8-8 6 5 11-14" stroke="var(--viz-5)" stroke-width="1.8"
               stroke-linecap="round" stroke-linejoin="round"/>
       </g>
+      </g><!-- /bot-float -->
 
-      <!-- 浮动的小元素：加号 / 圆环 / 对勾 -->
-      <rect x="38" y="56" width="26" height="26" rx="8" fill="var(--viz-2-soft)"/>
-      <path d="M46 69 h10 M51 64 v10" stroke="var(--viz-2)" stroke-width="1.6" stroke-linecap="round"/>
-      <rect x="196" y="42" width="24" height="24" rx="8" fill="var(--viz-4-soft)"/>
-      <circle cx="208" cy="54" r="4.5" stroke="var(--viz-4)" stroke-width="1.6"/>
-      <rect x="50" y="140" width="22" height="22" rx="7" fill="var(--viz-3-soft)"/>
-      <path d="M56 151 l4-4 5 5" stroke="var(--viz-3)" stroke-width="1.6"
-            stroke-linecap="round" stroke-linejoin="round"/>
+      <!-- 浮动的小元素：加号 / 圆环 / 对勾（各自 bot-chip，周期错开） -->
+      <g class="bot-chip c1">
+        <rect x="38" y="56" width="26" height="26" rx="8" fill="var(--viz-2-soft)"/>
+        <path d="M46 69 h10 M51 64 v10" stroke="var(--viz-2)" stroke-width="1.6" stroke-linecap="round"/>
+      </g>
+      <g class="bot-chip c2">
+        <rect x="196" y="42" width="24" height="24" rx="8" fill="var(--viz-4-soft)"/>
+        <circle cx="208" cy="54" r="4.5" stroke="var(--viz-4)" stroke-width="1.6"/>
+      </g>
+      <g class="bot-chip c3">
+        <rect x="50" y="140" width="22" height="22" rx="7" fill="var(--viz-3-soft)"/>
+        <path d="M56 151 l4-4 5 5" stroke="var(--viz-3)" stroke-width="1.6"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </g>
     </svg>`;
 
   /** 示例产出 · 折线图 */
@@ -772,11 +786,12 @@
       </defs>
       <path d="M10 20 H170 M10 44 H170 M10 68 H170" stroke="var(--line)" stroke-width="1"/>
       <path d="M10 12 V80 H172" stroke="var(--line-strong)" stroke-width="1"/>
-      <path d="M14 62 L42 44 L70 52 L98 30 L126 38 L154 18 L166 22 V80 H14 Z" fill="url(#lnFill)"/>
-      <path d="M14 62 L42 44 L70 52 L98 30 L126 38 L154 18 L166 22"
+      <path class="lc-fill" d="M14 62 L42 44 L70 52 L98 30 L126 38 L154 18 L166 22 V80 H14 Z" fill="url(#lnFill)"/>
+      <!-- pathLength="1"：把描线长度归一化成 1，CSS 里 dasharray/offset 就不用猜真实像素长度 -->
+      <path class="lc-line" pathLength="1" d="M14 62 L42 44 L70 52 L98 30 L126 38 L154 18 L166 22"
             stroke="var(--viz-1)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="98" cy="30" r="3.2" fill="var(--bg)" stroke="var(--viz-1)" stroke-width="2"/>
-      <circle cx="154" cy="18" r="3.2" fill="var(--bg)" stroke="var(--viz-1)" stroke-width="2"/>
+      <circle class="lc-dot d1" cx="98" cy="30" r="3.2" fill="var(--bg)" stroke="var(--viz-1)" stroke-width="2"/>
+      <circle class="lc-dot d2" cx="154" cy="18" r="3.2" fill="var(--bg)" stroke="var(--viz-1)" stroke-width="2"/>
     </svg>`;
 
   /** 示例产出 · 分组柱状图 */
@@ -784,14 +799,14 @@
     <svg viewBox="0 0 180 96" fill="none" aria-hidden="true">
       <path d="M10 20 H170 M10 44 H170" stroke="var(--line)" stroke-width="1"/>
       <path d="M10 12 V80 H172" stroke="var(--line-strong)" stroke-width="1"/>
-      <rect x="24"  y="50" width="12" height="30" rx="3" fill="var(--viz-2)"/>
-      <rect x="38"  y="62" width="12" height="18" rx="3" fill="var(--viz-1)" opacity=".55"/>
-      <rect x="60"  y="36" width="12" height="44" rx="3" fill="var(--viz-2)"/>
-      <rect x="74"  y="52" width="12" height="28" rx="3" fill="var(--viz-1)" opacity=".55"/>
-      <rect x="96"  y="26" width="12" height="54" rx="3" fill="var(--viz-2)"/>
-      <rect x="110" y="44" width="12" height="36" rx="3" fill="var(--viz-1)" opacity=".55"/>
-      <rect x="132" y="40" width="12" height="40" rx="3" fill="var(--viz-2)"/>
-      <rect x="146" y="56" width="12" height="24" rx="3" fill="var(--viz-1)" opacity=".55"/>
+      <rect class="bar b1"  x="24"  y="50" width="12" height="30" rx="3" fill="var(--viz-2)"/>
+      <rect class="bar b2"  x="38"  y="62" width="12" height="18" rx="3" fill="var(--viz-1)" opacity=".55"/>
+      <rect class="bar b3"  x="60"  y="36" width="12" height="44" rx="3" fill="var(--viz-2)"/>
+      <rect class="bar b4"  x="74"  y="52" width="12" height="28" rx="3" fill="var(--viz-1)" opacity=".55"/>
+      <rect class="bar b5"  x="96"  y="26" width="12" height="54" rx="3" fill="var(--viz-2)"/>
+      <rect class="bar b6"  x="110" y="44" width="12" height="36" rx="3" fill="var(--viz-1)" opacity=".55"/>
+      <rect class="bar b7"  x="132" y="40" width="12" height="40" rx="3" fill="var(--viz-2)"/>
+      <rect class="bar b8"  x="146" y="56" width="12" height="24" rx="3" fill="var(--viz-1)" opacity=".55"/>
     </svg>`;
 
   /** 取一个 24x24 的线性图标 */

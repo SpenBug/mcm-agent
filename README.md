@@ -311,7 +311,7 @@ flowchart TB
 npm install
 npm start              # 启动（无 GPU 环境用 npm run start:nogpu）
 
-npm test               # 聚合离线测试（23 套，不需要图形界面）
+npm test               # 聚合离线测试（24 套，不需要图形界面）
 npm run smoke          # 端到端：UI + IPC + 真实 Python/draw.io 导出
 ```
 

@@ -4,7 +4,7 @@
 > 文中的命令与数字都来自实际运行（不是凭记忆写的），改动后请重新核对。
 >
 > - 项目：`mcm-agent`（Electron 桌面应用，Windows 10+ x64）
-> - 文档基准：v1.1.1 / 23 套离线测试
+> - 文档基准：v1.1.1 / 24 套离线测试
 > - 最后更新：2026-10-09
 >
 > （这里刻意**不写**提交数、跟踪文件数 —— 它们是 git 状态的自指：
@@ -172,7 +172,7 @@ npm start              # 启动（无 GPU 环境用 npm run start:nogpu）
 **改完代码后的自检顺序**（从快到慢）：
 
 ```powershell
-npm test                    # 23 套离线测试，秒级，不需要图形界面
+npm test                    # 24 套离线测试，秒级，不需要图形界面
 npm run smoke               # 开发态端到端（UI + IPC + 真实导出），约 3 分钟
 npm run selftest:runtimes   # 技能脚本两条执行路径（需真实 Electron）
 ```
@@ -282,12 +282,16 @@ git rev-parse HEAD   # 两者必须一致
 | `scrub-preview-userpath.js --check` | 预览桩里残留开发机用户名（做宣传图会暴露身份） |
 | `check-version-consistency.js` | README 下载链接版本与 package.json 不一致 |
 | `check-doc-diagrams.js` | Mermaid 裸尖括号（整块图渲染失败）、CRLF 让校验静默失配、图片引用不存在、**全文锚点失效**（首屏导航是目录之外的第二处手抄，重编号时曾漏 4 个） |
+| `check-empty-state-motion.js` | 首屏动效四类炸点：关键帧动了会重排的属性、漏 `prefers-reduced-motion` 降级、**动画终值 ≠ 静态样式**（`fill:both` 会永久压住静态声明，宣传截图取的就是这个终态）、CSS 动画撞上 SVG `transform=` 呈现属性（覆盖而非叠加，机器人举的图会甩飞）。自带 `--self-test` 反向验证 |
 | `check-sop-facts.js` | SOP/README 里的命令、文件、数字与现实不符（刻意不校验提交数/文件数 —— 自指事实必然腐烂） |
 | `sync-keygen-options.js --check` | 签发器赛事选项与定价漂移（曾漏 3 个赛事、亚太赛还是旧价） |
 | `icon-check.js` | 图标形状退化 / 产物过期（用**内容指纹**，不用 mtime） |
 
-**孤儿守卫**：`run-all-tests.js` 会检查 `scripts/*-test.js` 是否都挂进了套件列表，
-漏挂直接失败。上线当天就抓到一个从未被执行过的 `path-resolve-test.js`。
+**孤儿守卫**：`run-all-tests.js` 会检查 `scripts/*-test.js` **与 `scripts/check-*.js`**
+是否都挂进了套件列表，漏挂直接失败。上线当天就抓到一个从未被执行过的 `path-resolve-test.js`。
+检查范围扩到 `check-*.js` 是本轮加的：`check-empty-state-motion.js` 的名字先被写进了
+styles.css 的注释（"守卫盯着这条"），文件却还没落地 —— **注释承诺了一条不存在的保护**，
+比没写注释更坏。现在两边夹：孤儿检查抓"写了没挂"，守卫自己的死指针检查抓"注释指到不存在的文件"。
 
 **新增守卫时请照此模式**：`--check` 模式 + 反向验证（故意注入违规，确认会红）。
 

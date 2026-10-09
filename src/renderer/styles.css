@@ -390,6 +390,145 @@ button, textarea, input, select { font-family: inherit; font-size: inherit; colo
 /* 首屏内容压在花字之上 */
 .es-brand, .es-grid { position: relative; z-index: 1; }
 
+/* ============ 空态动效（入场 + 持续微动）============
+   三条硬规矩，改这里之前先读完：
+
+   1) 只碰 transform / opacity（以及折线描线用的 stroke-dashoffset）。
+      机器人 SVG 有几十个节点，动 width/top/margin 会逐帧触发重排，
+      整块首屏跟着掉帧。守卫 scripts/check-empty-state-motion.js 盯着这条。
+
+   2) 入场动画靠 DOM 重建自动重放（renderMessages 在消息为空时每次都
+      buildEmptyState()），所以**不要**再加 JS 计时器去"触发"动画。
+
+   3) 每条动效都必须有 prefers-reduced-motion 降级（本块末尾），
+      并且**终态 = 元素原本的样子**：动画中途被打断、或系统关掉动效，
+      画面都不能缺文字、缺柱子。
+
+   入场总时长压在 1.9s 内（守卫逐条验 delay + duration ≤ 1.9）：
+   引子 0.15→0.49，大字 0.68，包袱 1.15 + .72 = 1.87 收 ——
+   包袱的 delay 是笑点的停顿，要收时长就砍抖动、别提前落点。
+   图表描线/长柱 0.5 起步，数据点最后 1.52 收。 */
+
+/* ---- 入场关键帧 ----
+   终点值写死成元素各自的静态 opacity：
+   引子 .20 / 大字 .82 / 包袱 .72 —— 用 fill:forwards 定格，
+   动画结束后视觉与静态样式完全一致（截图取的就是这一态）。 */
+@keyframes esLineIn {
+  from { opacity: 0; transform: translateY(9px); }
+  to   { opacity: .20; transform: none; }
+}
+@keyframes esHeroIn {
+  from { opacity: 0; transform: translateY(13px) scale(.97); }
+  to   { opacity: .82; transform: none; }
+}
+/* 包袱的动法：先弹过头再发抖收住。笑点靠"缩一下—弹大—左右抖"的节奏，
+   最后停在静态样式的 rotate(-3deg) 上，不能越动越歪。 */
+@keyframes esFearIn {
+  0%   { opacity: 0;  transform: translateY(7px) scale(.55) rotate(3deg); }
+  52%  { opacity: .72; transform: translateY(0)   scale(1.16) rotate(-7deg); }
+  70%  {              transform: scale(.97) rotate(4deg); }
+  85%  {              transform: rotate(-5.5deg); }
+  100% { opacity: .72; transform: rotate(-3deg); }
+}
+@keyframes esRise {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: none; }
+}
+/* 折线"画出来"：pathLength="1" 已把长度归一，这里不用猜像素长度 */
+@keyframes esDraw {
+  from { stroke-dashoffset: 1; }
+  to   { stroke-dashoffset: 0; }
+}
+@keyframes esPop {
+  0%   { opacity: 0; transform: scale(0); }
+  70%  { opacity: 1; transform: scale(1.35); }
+  100% { opacity: 1; transform: scale(1); }
+}
+/* 柱子只动 transform，不动 opacity：
+   第二组柱子用 <rect opacity=".55"> 做双色对比，CSS 动画一旦写 opacity
+   就会**覆盖**这个呈现属性（fill:forwards 之后还常驻终值），
+   分组对比会被抹平成同色。scaleY(0) 本身就已经"看不见"了。 */
+@keyframes esGrowBar {
+  from { transform: scaleY(0); }
+  to   { transform: scaleY(1); }
+}
+
+/* ---- 持续微动关键帧 ---- */
+@keyframes botFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+@keyframes botBulb  { 0%, 100% { transform: scale(1); }      50% { transform: scale(1.22); } }
+/* 眨眼：一整个周期里只占 4%，其余时间完全不动 —— 频率低了才有"活着"，
+   频繁眨眼只会让人盯着看。 */
+@keyframes botBlink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95%           { transform: scaleY(.08); }
+}
+@keyframes chipFloat {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50%      { transform: translateY(-6px) rotate(3deg); }
+}
+
+/* ---- 花字：逐行级联 ---- */
+.es-slogan .sl-line       { animation: esLineIn .62s cubic-bezier(.23, 1, .32, 1) both; }
+.es-slogan .sl-line:nth-child(1) { animation-delay: .15s; }
+.es-slogan .sl-line:nth-child(2) { animation-delay: .32s; }
+.es-slogan .sl-line:nth-child(3) { animation-delay: .49s; }
+.es-slogan .sl-hero       { animation: esHeroIn .70s cubic-bezier(.23, 1, .32, 1) both; animation-delay: .68s; }
+.es-slogan .sl-fear       { animation: esFearIn .72s cubic-bezier(.23, 1, .32, 1) both; animation-delay: 1.15s; }
+
+/* ---- 内容块：三组错位上浮，别齐刷刷一起跳 ---- */
+.es-brand  { animation: esRise .50s cubic-bezier(.23, 1, .32, 1) both; animation-delay: .05s; }
+.es-col-l  { animation: esRise .55s cubic-bezier(.23, 1, .32, 1) both; animation-delay: .22s; }
+.es-col-r  { animation: esRise .55s cubic-bezier(.23, 1, .32, 1) both; animation-delay: .34s; }
+
+/* ---- 机器人：整体淡入后开始漂浮；眼睛/天线/浮块各自循环 ----
+   ⚠️ 漂浮挂在包装 <g class="bot-float"> 上。SVG 子节点上的
+   transform="translate(...)" 是**属性**，CSS transform 会覆盖它 ——
+   直接动子节点会把举着的图甩飞。同理被动画的节点都不能带 transform 属性。
+   SVG 元素的 transform-origin 默认不是自身中心，必须 fill-box。 */
+.es-bot                { animation: esRise .60s cubic-bezier(.23, 1, .32, 1) both; animation-delay: .30s; }
+.bot-float             { animation: botFloat 4.6s ease-in-out 1.1s infinite; }
+.bot-bulb              { transform-box: fill-box; transform-origin: center;
+                         animation: botBulb 3.2s ease-in-out 1.2s infinite; }
+.bot-eye               { transform-box: fill-box; transform-origin: center;
+                         animation: botBlink 6.4s ease-in-out 1.8s infinite; }
+.bot-chip              { transform-box: fill-box; transform-origin: center;
+                         animation: chipFloat 4.2s ease-in-out infinite; }
+.bot-chip.c2           { animation-duration: 5.1s; animation-delay: 1.6s; }
+.bot-chip.c3           { animation-duration: 3.6s; animation-delay: 2.3s; }
+
+/* ---- 折线图：描线 → 面积填充 → 数据点弹出 ---- */
+.lc-line { stroke-dasharray: 1 1;
+           animation: esDraw 1.0s cubic-bezier(.4, .1, .3, 1) both; animation-delay: .50s; }
+.lc-fill { animation: esRise .80s ease-out both; animation-delay: .85s; }
+.lc-dot  { transform-box: fill-box; transform-origin: center;
+           animation: esPop .38s cubic-bezier(.34, 1.56, .64, 1) both; }
+.lc-dot.d1 { animation-delay: 1.30s; }
+.lc-dot.d2 { animation-delay: 1.52s; }
+
+/* ---- 柱状图：8 根柱从底部依次长高 ---- */
+.bar { transform-box: fill-box; transform-origin: bottom center;
+       animation: esGrowBar .55s cubic-bezier(.23, 1, .32, 1) both; }
+.bar.b1 { animation-delay: .55s; }  .bar.b2 { animation-delay: .62s; }
+.bar.b3 { animation-delay: .69s; }  .bar.b4 { animation-delay: .76s; }
+.bar.b5 { animation-delay: .83s; }  .bar.b6 { animation-delay: .90s; }
+.bar.b7 { animation-delay: .97s; }  .bar.b8 { animation-delay: 1.04s; }
+
+/* ---- 降级：系统开了"减少动态效果"就全部静止，直接给终态 ----
+   注意 stroke-dasharray: none —— 折线靠虚线偏移做描线，
+   只关动画不关虚线，线会整个消失（这是这类降级最常见的错）。 */
+@media (prefers-reduced-motion: reduce) {
+  .es-slogan .sl-line, .es-slogan .sl-hero, .es-slogan .sl-fear,
+  .es-brand, .es-col-l, .es-col-r, .es-bot,
+  .lc-line, .lc-fill, .lc-dot, .bar,
+  .bot-float, .bot-bulb, .bot-eye, .bot-chip {
+    animation: none !important;
+  }
+  .es-slogan .sl-line { opacity: .20; }
+  .es-slogan .sl-hero { opacity: .82; }
+  .es-slogan .sl-fear { opacity: .72; }
+  .lc-line { stroke-dasharray: none; }
+}
+
 /* ---- 品牌区（横排，把纵向空间让给下面两栏）---- */
 .es-brand { display: flex; align-items: center; gap: 13px; margin-bottom: 22px; text-align: left; }
 /* 首屏品牌图标。⚠️ 保留 position:relative —— 下面的 ::after 径向光晕要靠它定位。
