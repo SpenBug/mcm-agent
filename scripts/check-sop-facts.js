@@ -17,7 +17,6 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
 const DOC = path.join(ROOT, 'docs', 'SOP-开发与发版.md');
@@ -29,7 +28,6 @@ if (!fs.existsSync(DOC)) {
 
 const doc = fs.readFileSync(DOC, 'utf8');
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-const git = (args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' }).trim();
 
 let pass = 0;
 let fail = 0;
@@ -58,18 +56,20 @@ for (const s of [...new Set([...doc.matchAll(/(docs\/[^\s`）)]+\.md)/g)].map((m
 }
 
 // ---------- ③ 文档里的数字必须与实际一致 ----------
+// ⚠️ 刻意**不校验**提交数 / 跟踪文件数：它们是 git 状态的自指 ——
+//    更新这个数字的那次提交本身就会让它再次过期（实测两次同步、两次当场失效）。
+//    "必然腐烂的事实"不该写进文档，更不该写校验逼人去修它。
 console.log('\n=== ③ 文档里的数字 ===');
 const suiteSrc = fs.readFileSync(path.join(ROOT, 'scripts/run-all-tests.js'), 'utf8');
 const suiteCount = [...suiteSrc.matchAll(/\['[^']+', 'scripts\/[^']+'(?:,\s*\[[^\]]*\])?\]/g)].length;
 check(`测试套件数 = ${suiteCount}`, doc.includes(`${suiteCount} 套`), '文档数字与 run-all-tests.js 不符');
-
-const tracked = git(['ls-files']).split('\n').length;
-check(`跟踪文件数 = ${tracked}`, doc.includes(`${tracked} 个跟踪文件`), '文档数字与实际不符');
-
-const commits = git(['rev-list', '--count', 'HEAD']);
-check(`提交数 = ${commits}`, doc.includes(`${commits} 次提交`), '文档数字与实际不符');
+// README 的测试章节也写了套件数 —— 同一事实两处出现，必须一起校验，
+// 否则改了套件列表只会红 SOP 那半边，README 悄悄过期。
+const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+check(`README 的套件数 = ${suiteCount}`, readme.includes(`${suiteCount} 套`), 'README.md 里的套件数与 run-all-tests.js 不符');
 
 check(`版本号 = ${pkg.version}`, doc.includes(pkg.version), '文档版本与 package.json 不符');
+check(`README 版本号 = ${pkg.version}`, readme.includes(pkg.version), 'README 版本与 package.json 不符');
 
 // ---------- ④ 守卫表里的脚本必须真支持 --check ----------
 console.log('\n=== ④ 守卫脚本的 --check 模式 ===');
