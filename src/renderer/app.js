@@ -822,12 +822,14 @@
 
     div.innerHTML = `
       <!-- 背景花字标语：装饰层，pointer-events:none 不挡交互。
-           前三行是淡的引子，"他阿一古数模"是渐变大字（视觉焦点）。 -->
+           前三行是淡的引子，"他阿一古数模"是渐变大字（视觉焦点），
+           末尾"我很怕！"是红字包袱 —— 越文艺的铺垫，这句反差越好笑。 -->
       <div class="es-slogan" aria-hidden="true">
         <span class="sl-line">春风若有怜花意</span>
         <span class="sl-line">可否许我再少年</span>
         <span class="sl-line">但是...</span>
         <span class="sl-hero">他阿一古数模</span>
+        <span class="sl-fear">我很怕！</span>
       </div>
 
       <div class="es-brand">

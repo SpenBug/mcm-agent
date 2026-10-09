@@ -223,6 +223,20 @@ async function waitForText(win, texts, timeoutMs) {
   throw new Error('等待超时：' + texts.join(' / '));
 }
 
+/** 轮询等待某个 CSS 选择器对应的元素出现（超时抛错）。
+ *  用于"点了按钮 → 断言真的打开了"，别拿固定 sleep 猜渲染时长。 */
+async function waitForEl(win, selector, timeoutMs) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    const has = await win.webContents.executeJavaScript(
+      `Boolean(document.querySelector(${JSON.stringify(selector)}))`
+    );
+    if (has) return;
+    await sleep(400);
+  }
+  throw new Error(`等待元素超时：${selector}`);
+}
+
 async function runPromoShots(win) {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   seedWorkspace();
@@ -270,6 +284,12 @@ async function runPromoShots(win) {
     win.setContentSize(1920, 1080);
     await sleep(800);
 
+    // ⚠️ 空屏必须先确认背景花字标语真的渲染出来再截。
+    //    这既是本轮需求（"他阿一古数模，我很怕！"是完整包袱，
+    //    曾经实现时漏了"我很怕！"半句），也是 shot0 与 shot4 的区分点 ——
+    //    两张都在空屏上截，若花字没渲染，它们会视觉雷同而字节不同，
+    //    骗过下面那道 sha256 唯一性检查。
+    await waitForText(win, ['春风若有怜花意', '他阿一古数模', '我很怕！'], 15000);
     await capture(win, 'shot0_空工作台.png');
 
     // ── 第一轮：题目分析报告（write_file）──
@@ -338,15 +358,35 @@ async function runPromoShots(win) {
     await capture(win, 'shot3_文件树与图表预览.png');
 
     // ── 设置抽屉：先恢复真实配置再截，展示的是用户自己的服务商与模型 ──
+    // ⚠️ 与 shot3 同款坑：reload 后固定 sleep 猜时长，click 可能打在
+    //    还没绑定的按钮上 → 抽屉没开，抓成空屏（旧图能成功纯属运气）。
+    //    改成"每轮没开就再点一次"，直到 #fProvider（设置面板独有元素）出现。
     if (cfgBackup === null) fs.rmSync(cfgFile, { force: true });
     else fs.writeFileSync(cfgFile, cfgBackup, 'utf8');
     store.cache = null;
     win.webContents.reload();
     await sleep(3500);
-    await win.webContents.executeJavaScript(`(() => {
-      document.getElementById('btnSettings').click();
-    })()`);
-    await sleep(1500);
+
+    const settingsOpened = await (async () => {
+      for (let i = 0; i < 30; i += 1) {
+        const opened = await win.webContents.executeJavaScript(`(() => {
+          if (document.querySelector('#fProvider')) return true;   // 抽屉已开
+          document.getElementById('btnSettings')?.click();         // 没开就再点一次
+          return false;
+        })()`);
+        if (opened) return true;
+        await sleep(500);
+      }
+      return false;
+    })();
+    if (!settingsOpened) {
+      throw new Error(
+        '截图失败：设置抽屉没打开（#fProvider 始终不存在）—— '
+        + 'shot4 会抓成空屏，与 shot0 视觉重复。检查 btnSettings 绑定或 openSettings 逻辑。',
+      );
+    }
+    console.log('settings 抽屉 =>', settingsOpened);
+    await sleep(600);   // 等抽屉滑入动画走完
     await capture(win, 'shot4_设置自选模型.png');
 
     console.log(`mock 请求数 = ${received.length}`);

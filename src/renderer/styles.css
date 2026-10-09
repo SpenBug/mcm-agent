@@ -322,7 +322,8 @@ button, textarea, input, select { font-family: inherit; font-size: inherit; colo
 
 /* ---- 背景花字标语 ----
    装饰层，不参与交互也不影响布局（absolute + pointer-events:none）。
-   前三行是淡引子，"他阿一古数模"是渐变大字（视觉焦点）。
+   前三行是淡引子，"他阿一古数模"是渐变大字（视觉焦点），
+   末尾"我很怕！"是红字包袱 —— 文艺铺垫后的反差笑点。
    ⚠️ 大字别调太亮：它铺在对话区背后，太抢会让上面的卡片读不清。 */
 .es-slogan {
   position: absolute; inset: -18px 0 0 0;
@@ -359,10 +360,27 @@ button, textarea, input, select { font-family: inherit; font-size: inherit; colo
   filter: drop-shadow(0 2px 18px rgba(var(--brand-rgb), .34));
   opacity: .82;
 }
+/* 包袱："我很怕！" —— 文艺铺垫 + 渐变大字之后，跟一句发抖的红字。
+   比大字小一档、微微左倾（手写的心虚感），红色用 --danger 自动适配深浅主题。
+   它是笑点不是主角，透明度压到 .72，别抢对话区卡片。 */
+.es-slogan .sl-fear {
+  font-family: "KaiTi", "STKaiti", "楷体", "Microsoft YaHei", serif;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: .1em;
+  white-space: nowrap;
+  color: var(--danger);
+  opacity: .72;
+  margin-top: -2px;
+  margin-right: 6px;               /* 往左错开一点，像没写正 */
+  transform: rotate(-3deg);        /* 微微发抖的手写感 */
+}
 
 /* 窄窗口时收一收，免得花字压到卡片上 */
 @media (max-width: 1240px) {
   .es-slogan .sl-hero { font-size: 32px; }
+  .es-slogan .sl-fear { font-size: 21px; }
   .es-slogan .sl-line { font-size: 13px; }
 }
 @media (max-width: 980px) {
