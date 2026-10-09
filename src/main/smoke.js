@@ -12,6 +12,8 @@ const http = require('node:http');
 const crypto = require('node:crypto');
 const { app } = require('electron');
 
+const { summarizeSmoke, verdictLine } = require('./smoke-verdict');
+
 const { getSkillsRoot, getDefaultWorkspace, getUserDataDir } = require('./paths');
 const { buildSystemPrompt } = require('./agent/prompt');
 const { executeTool, TOOL_DEFS } = require('./agent/tools');
@@ -319,9 +321,20 @@ async function checkChatE2E(win) {
   return out;
 }
 
+/** 结果落盘位置：打包态 stdout 看不见，只能靠文件 */
+function smokeReportPath() {
+  return process.env.MCM_SMOKE_OUT
+    || path.join(app.getPath('temp'), 'mcm-smoke-report.txt');
+}
+
 async function runSmoke(getWindow) {
   const win = getWindow();
   const logs = [];
+  const lines = [];
+
+  // 抓一份完整输出用于汇总（同时照常打印，开发态仍然能直接看）
+  const realLog = console.log;
+  console.log = (...a) => { lines.push(a.join(' ')); realLog(...a); };
 
   // 授权前置：换成临时有效凭证，跑完恢复 —— 否则体验期一过，门禁会把
   // session/chat 全拦掉，报出来的失败指不到根因（详见 withTempLicense 注释）
@@ -330,10 +343,52 @@ async function runSmoke(getWindow) {
   win.webContents.on('render-process-gone', (_e, d) => logs.push(`RENDER GONE: ${JSON.stringify(d)}`));
   win.webContents.on('did-fail-load', (_e, code, desc) => logs.push(`LOAD FAIL ${code} ${desc}`));
 
+  let verdict;
+  let bodyError = null;
   try {
     await runSmokeBody(win, logs);
+  } catch (err) {
+    // runSmokeBody 内部已 catch 断言异常；能抛到这里的都是"冒烟自己崩了"
+    // （比如 capturePage / checkBackend 抛错）。也必须算失败，
+    // 否则打包态会挂着一个窗口、退出码却拿不到。
+    bodyError = err;
+    console.log('===界面错误===');
+    console.log(err && err.stack ? err.stack : String(err));
   } finally {
     lic.restore();
+    console.log = realLog;
+
+    // 渲染进程日志也参与判定（CSP 违规、加载失败都出现在这里）
+    const all = lines.concat(logs);
+    verdict = summarizeSmoke(all);
+    if (bodyError && verdict.fail === 0) {
+      verdict = { failures: [`冒烟流程异常中断：${bodyError.message}`], pass: verdict.pass, fail: 1 };
+    }
+    const report = smokeReportPath();
+    const body = [
+      `smoke verdict: ${verdict.fail === 0 ? 'PASS' : 'FAIL'}`,
+      `pass=${verdict.pass} fail=${verdict.fail}`,
+      `packaged=${app.isPackaged} version=${app.getVersion()} execPath=${process.execPath}`,
+      '',
+      ...all,
+      '',
+      verdict.failures.length ? `--- ${verdict.failures.length} 项失败 ---` : '--- 无失败项 ---',
+      ...verdict.failures,
+    ].join('\n');
+    try {
+      fs.writeFileSync(report, body, 'utf8');
+      realLog(`SMOKE_REPORT => ${report}`);
+    } catch (e) {
+      realLog(`SMOKE_REPORT 写入失败：${e.message}`);
+    }
+    realLog(`SMOKE_VERDICT ${verdictLine(verdict)}`);
+    for (const f of verdict.failures) realLog(`  FAIL: ${f}`);
+
+    // ⚠️ 退出码必须放在 finally 里：runSmokeBody 抛异常时，
+    // 写在 try/finally 之后的语句根本执行不到，打包态就会
+    // "窗口挂着、进程不退、退出码拿不到" —— 看起来像测试卡死。
+    // app.exit 会跳过 app.quit 的优雅关闭，正是这里要的（强制带码退出）。
+    app.exit(verdict.fail === 0 ? 0 : 1);
   }
 }
 

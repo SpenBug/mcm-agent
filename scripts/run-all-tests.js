@@ -28,6 +28,7 @@ const SUITES = [
   ['会话标题生成', 'scripts/session-title-test.js'],
   ['输入草稿存储', 'scripts/drafts-test.js'],
   ['引用解析（@{}）', 'scripts/refs-test.js'],
+  ['冒烟结果判定器', 'scripts/smoke-verdict-test.js'],
   ['改名后数据目录迁移', 'scripts/migration-test.js'],
   ['品牌标记几何', 'scripts/icon-check.js'],
   ['品牌标记与界面同源', 'scripts/sync-brand-mark.js', ['--check']],
