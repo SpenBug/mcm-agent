@@ -217,8 +217,8 @@
     if (role === 'user') {
       av.textContent = '你';
     } else {
-      // 助手头像原本是旧品牌「数模工坊」的 ∑ —— 每条回复都会显示，
-      // 是全站出现频率最高的品牌标记，改名时漏掉了。
+      // 助手头像原本是旧品牌的 ∑ —— 每条回复都显示，
+      // 是全站出现频率最高的品牌标记，改名时漏掉了（smoke 有实测断言）。
       // 用单色马头（#brandMarkMono）而不是带底板的 brandMark：
       // .msg.assistant .avatar 自己已经是品牌蓝底，再放一张蓝底图就是蓝底套蓝底。
       av.innerHTML = '<svg viewBox="0 0 256 256" aria-hidden="true"><use href="#brandMarkMono"/></svg>';

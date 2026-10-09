@@ -36,8 +36,10 @@ console.log('=== ① 本轮新功能必须在包里 ===');
 for (const f of [
   '/src/main/competitions.js',
   '/src/main/agent/ai-declare.js',
+  '/src/main/agent/session-title.js',
   '/src/main/license.js',
   '/src/main/agent/prompt.js',
+  '/src/main/brand-mark.js',
   '/src/renderer/app.js',
   '/src/renderer/index.html',
   '/src/renderer/styles.css',
@@ -47,6 +49,16 @@ for (const f of [
 ]) {
   check(f, has(f));
 }
+
+/**
+ * 结构检查：index.html 里引用的每个 <script src> / <link href> 都必须真的在包里。
+ *
+ * 为什么不只列文件名清单：新增脚本时清单是人手维护的，一定会漏。
+ * 而"脚本没进包"的表现是 window.createDrafts 未定义 ——
+ * 界面上只有一条 try/catch 兜着，功能静默消失，肉眼看不出来。
+ * 从 HTML 反查资源，等于让 HTML 自己当清单。
+ * （具体断言放在 ⑥ 组，那里已经有读包内文件的 helper。）
+ */
 
 console.log('\n=== ② 私钥 / 台账绝不能进包 ===');
 const leaked = files.filter((f) => /\.pem$/.test(f) || /issued\.csv$/.test(f) || /\/keys\//.test(f));
@@ -85,6 +97,14 @@ check('brand/pay-qr.png 不在（打包排除）', !fs.existsSync(path.join(bran
  */
 console.log('\n=== ⑥ 包内内容 = 当前代码（防"进了包但是旧内容"）===');
 const { HORSE_PATH } = require('../src/main/brand-mark');
+/**
+ * 旧品牌名。只在本文件（不随包发布）里出现字面量 ——
+ * 一旦写进 src/renderer 的任何文件（**包括 HTML 注释和 JS 注释**），
+ * 这条检查就会自己把自己判红。本轮就踩过：
+ * 给激活页写"这里原本是旧品牌「…」"的说明注释，直接把守卫打红了。
+ * 历史沿革写在 docs/plans/ 和提交信息里，不要写进发布代码。
+ */
+const OLD_BRAND = '数模工坊';
 const asarPath_ = (rel) => rel.replace(/\//g, path.sep);
 const read = (rel) => {
   try {
@@ -100,7 +120,25 @@ if (html) {
   check('界面用的是当前马头形状', html.includes(HORSE_PATH));
   check('界面无旧马头路径', !html.includes('M152 26 C146 36'));
   check('界面无旧 ∑ 图形', !/M170 84 H100/.test(html));
-  check('界面无旧品牌名「数模工坊」', !html.includes('数模工坊'));
+  check('界面无旧品牌名残留', !html.includes(OLD_BRAND));
+
+  /**
+   * HTML 自己当清单：它引用的每个 <script src>/<link href> 都必须真的在包里。
+   *
+   * 为什么不只靠上面那份手写文件清单：新增脚本时清单是人手维护的，一定会漏。
+   * 而"脚本没进包"的表现是 window.createDrafts 未定义 ——
+   * 界面上只有一条 try/catch 兜着，功能静默消失，肉眼看不出来。
+   */
+  const refs = [...html.matchAll(/<(?:script|link)[^>]*\s(?:src|href)="([^"]+)"/g)]
+    .map((m) => m[1])
+    // 只查同目录的相对资源：外链、data:、#锚点 都不该进包
+    .filter((u) => !/^(?:https?:|data:|file:|#|\/\/)/.test(u))
+    .map((u) => `/src/renderer/${u.replace(/^\.\//, '').replace(/\\/g, '/')}`);
+  const missing = refs.filter((r) => !files.includes(r));
+  check(`${refs.length} 个 HTML 引用资源全在包内`, refs.length > 0 && missing.length === 0, '缺：' + missing.join(', '));
+  // 兜住"正则没匹配上导致这条检查形同虚设"
+  check('确实解析到 app.js（检查本身没失效）', refs.includes('/src/renderer/app.js'), refs.join(', '));
+  check('新增的草稿/引用脚本已进包', refs.includes('/src/renderer/drafts.js') && refs.includes('/src/renderer/refs.js'), refs.join(', '));
 }
 
 const pathsJs = read('src/main/paths.js');
