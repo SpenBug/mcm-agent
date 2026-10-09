@@ -95,37 +95,72 @@ function ensureRealNode() {
 }
 
 /**
- * 清掉上一次打包的残留。
+ * 打包前把 dist/ 里已有的产物全部挪进 dist/_stale/<时间戳>/。
  *
- * 两件事：
- *  1. electron-builder 失败会留下 `win-unpacked.tmp` / `win-undefined-unpacked`
- *     这类半成品目录，下次打包遇到同名目录行为不稳定 —— 直接删。
- *  2. dist/ 里躺着**改名前的旧产物**（`数模工坊 Setup 1.0.0.exe`，旧品牌旧图标），
- *     发版时很容易拿错包。但这些是已经花时间和带宽构建出来的交付物，
- *     **不能替用户删** —— 移到 dist/_stale/ 里，让 dist 根目录只剩当前版本。
+ * 为什么连"当前版本号"的产物也要挪：本轮真实差点踩到 ——
+ * dist/ 里躺着一个同名的 1.1.0 包，但它不含这轮的新功能。
+ * 如果打包中途失败（网络断了就是这样），dist/ 根目录仍然有"看起来是最新"的包，
+ * 拿去发版就是带着旧功能发布，而且版本号完全对得上，谁都发现不了。
+ * 挪空之后，打包失败 = dist/ 是空的，状态一眼可分辨。
+ *
+ * 为什么不直接删：那是用户花时间与带宽构建出来的交付物。
+ * 但全留着会每轮堆 ~225MB，所以只保留最近 STALE_KEEP 批。
  */
+// 只保留最近 1 批：一批就有安装包 + 便携版 + 解包目录 ≈ 350MB。
+// 注意 dist/ 已被 gitignore，git 里没有副本，所以这里删掉就是真没了 ——
+// 因此只删"本脚本自己生成的时间戳批次"，其余一律不碰（见下面的 _legacy）。
+const STALE_KEEP = 1;
+/** 本脚本生成的批次目录名（ISO 时间戳，把 : 和 . 换成 - 以便做文件名） */
+const BATCH_RE = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}$/;
+
 function cleanStale() {
   const distDir = path.join(ROOT, 'dist');
   if (!fs.existsSync(distDir)) return;
 
-  const staleDir = path.join(distDir, '_stale');
+  // 1. 半成品目录：electron-builder 失败留下的，行为不稳定，直接删
   for (const name of fs.readdirSync(distDir)) {
-    const p = path.join(distDir, name);
-    if (name === '_stale') continue;
-
     if (name.endsWith('.tmp') || name === 'win-undefined-unpacked' || name.includes('-undefined.')) {
-      fs.rmSync(p, { recursive: true, force: true });
+      fs.rmSync(path.join(distDir, name), { recursive: true, force: true });
       console.log(`[build] 清理半成品：${name}`);
-      continue;
     }
+  }
 
-    const pkg = require(path.join(ROOT, 'package.json'));
-    const isOldBrand = /数模工坊/.test(name);
-    const isOldVersion = name.includes('1.0.0') && pkg.version !== '1.0.0';
-    if (isOldBrand || isOldVersion) {
-      fs.mkdirSync(staleDir, { recursive: true });
-      fs.renameSync(p, path.join(staleDir, name));
-      console.log(`[build] 旧产物移入 dist/_stale/：${name}${isOldBrand ? '（改名前品牌）' : ''}`);
+  const staleRoot = path.join(distDir, '_stale');
+
+  // 2. 已有产物整体挪走
+  const movable = fs.readdirSync(distDir).filter((n) => n !== '_stale');
+  if (movable.length) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const batch = path.join(staleRoot, stamp);
+    fs.mkdirSync(batch, { recursive: true });
+    for (const name of movable) fs.renameSync(path.join(distDir, name), path.join(batch, name));
+    console.log(`[build] ${movable.length} 项已有产物移入 dist/_stale/${stamp}/`);
+  }
+
+  // 3. 上一版方案是把旧产物直接丢在 _stale/ 下面（不带批次目录）。
+  //    那些是用户的交付物，**不能因为"看起来不像本脚本生成的"就被清理逻辑删掉**，
+  //    所以收进 _legacy/ 永久保留。
+  if (fs.existsSync(staleRoot)) {
+    for (const e of fs.readdirSync(staleRoot)) {
+      if (e === '_legacy' || BATCH_RE.test(e)) continue;
+      const legacy = path.join(staleRoot, '_legacy');
+      fs.mkdirSync(legacy, { recursive: true });
+      const to = path.join(legacy, e);
+      if (fs.existsSync(to)) {
+        console.log(`[build] _legacy/ 下已有同名条目，保留原样不覆盖：${e}`);
+        continue;
+      }
+      fs.renameSync(path.join(staleRoot, e), to);
+      console.log(`[build] 历史产物收进 dist/_stale/_legacy/：${e}`);
+    }
+  }
+
+  // 4. 只清理本脚本生成的时间戳批次，保留最近 STALE_KEEP 批
+  if (fs.existsSync(staleRoot)) {
+    const batches = fs.readdirSync(staleRoot).filter((n) => BATCH_RE.test(n)).sort().reverse();
+    for (const old of batches.slice(STALE_KEEP)) {
+      fs.rmSync(path.join(staleRoot, old), { recursive: true, force: true });
+      console.log(`[build] 清掉更早的一批旧产物：_stale/${old}`);
     }
   }
 }
@@ -207,6 +242,42 @@ function waitForUnlocked(files, { timeoutMs = 20000 } = {}) {
   return stillLocked.length === 0;
 }
 
+/**
+ * 撞 EBUSY 就重试整轮打包。
+ *
+ * Windows 上打包常撞到 `EBUSY: resource busy or locked`（拷贝
+ * resources/brand/*.png 时）—— 杀毒实时扫描、资源管理器预览、
+ * IDE/agent 的文件索引会**临时**抓住文件几秒。
+ *
+ * ⚠️ 为什么不是"打包前等它解锁"：那样只在开始前看一眼，
+ * 而锁是几分钟后拷贝时才出现的（本轮实测：预检查全过，build 照样 EBUSY）。
+ * 瞬时锁只能靠重试，不能靠事前的单次探测。
+ */
+const LOCK_CODES = new Set(['EBUSY', 'EPERM', 'EACCES', 'ENOTEMPTY']);
+const BUILD_RETRIES = 3;
+const RETRY_WAIT_MS = 8000;
+
+function isLockError(err) {
+  const msg = String((err && (err.message || err.code)) || '');
+  return LOCK_CODES.has(err && err.code) || /EBUSY|resource busy|locked/i.test(msg);
+}
+
+async function buildWithRetry(run) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await run();
+    } catch (err) {
+      if (!isLockError(err) || attempt >= BUILD_RETRIES) throw err;
+      console.warn(
+        `\n[build] 资源文件被临时占用（第 ${attempt}/${BUILD_RETRIES} 次尝试失败）：` +
+        `\n  ${String(err.message).split('\n')[0]}` +
+        `\n  多为杀毒/预览/文件索引瞬时抓句柄所致，${RETRY_WAIT_MS / 1000}s 后自动重试…`,
+      );
+      await new Promise((r) => setTimeout(r, RETRY_WAIT_MS));
+    }
+  }
+}
+
 /** 收集 extraResources 里的文件（这些是打包时最容易被占用的） */
 function collectResourceFiles() {
   const out = [];
@@ -228,19 +299,18 @@ async function main() {
   ensureRealNode();
   cleanStale();
   checkIconsOrAbort();
+  // 事前探测只当"提前告知"用（能提前发现被长期占住的文件），
+  // 真正兜住瞬时锁的是下面的 buildWithRetry。
   waitForUnlocked(collectResourceFiles());
 
   const { build, Platform, Arch } = require('app-builder-lib');
   const { DIR_TARGET } = require('app-builder-lib/out/core');
   const pkg = require(path.join(ROOT, 'package.json'));
 
-  console.log(`[build] ${dirOnly ? '仅目录（跳过 NSIS）' : '完整安装包'} · 输出 dist/`);
-
-  const config = { ...pkg.build };
-
   // targets 有两种形态：
   //   仅目录 → DIR_TARGET（"dir"），并把 config.win.target 清掉，否则仍会跑 NSIS
   //   完整   → undefined，交给 config.win.target 里的 nsis + portable
+  const config = { ...pkg.build };
   let targets;
   if (dirOnly) {
     config.win = { ...config.win, target: undefined };
@@ -249,12 +319,14 @@ async function main() {
     targets = Platform.WINDOWS.createTarget(undefined, Arch.x64);
   }
 
-  const result = await build({
+  console.log(`[build] ${dirOnly ? '仅目录（跳过 NSIS）' : '完整安装包'} · 输出 dist/`);
+
+  const result = await buildWithRetry(() => build({
     targets,
     projectDir: ROOT,
     config,
     publish: 'never',
-  });
+  }));
 
   console.log('\n[build] 完成，产物：');
   for (const f of result) {
@@ -265,5 +337,11 @@ async function main() {
 main().catch((err) => {
   console.error('\n[build] 失败：');
   console.error(err && err.stack ? err.stack : err);
+  if (isLockError(err)) {
+    console.error('\n  重试 ' + BUILD_RETRIES + ' 次仍被占用。请手动排除：');
+    console.error('  · 关掉资源管理器里正在预览该 PNG 的窗口');
+    console.error('  · 杀毒软件把项目目录加入实时扫描排除项');
+    console.error('  · 确认没有正在运行的 阿一古数模.exe / 上一轮打包进程');
+  }
   process.exit(1);
 });
