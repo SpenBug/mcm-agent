@@ -269,9 +269,17 @@ npm run smoke          # 端到端：UI + IPC + 真实 Python/draw.io 导出
 
 ```bash
 npm run dist           # 出 NSIS 安装包 + 便携版到 dist/
+npm run smoke:packaged # ★ 对打包出来的 exe 跑冒烟（发版前必跑）
 npm run verify:package # 包内验收：该进的进了、私钥/签发器没进、内容是当前代码
 npm run verify:icon    # 从 exe 里反查内嵌图标是不是当前品牌图标
 ```
+
+> **为什么需要 `smoke:packaged`**：开发态全绿 ≠ 包里能跑。打包出的 exe 是
+> GUI 子系统程序，Windows 下看不到 stdout，所以冒烟自己会把结果写成
+> 报告文件并带退出码，这条命令再核对报告里的 `packaged=true` 与
+> `execPath` —— 确认跑的是包里的 exe，不是不小心用源码跑的。
+> 它还会清掉 `ELECTRON_RUN_AS_NODE`（不清的话 exe 退化成裸 node，
+> `--smoke` 被当成非法参数，退出码 9 且什么都不写，看起来像包坏了）。
 
 ---
 

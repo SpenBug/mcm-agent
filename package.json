@@ -18,6 +18,7 @@
     "start": "node scripts/dev.js",
     "start:nogpu": "node scripts/dev.js --no-gpu",
     "smoke": "node scripts/dev.js --smoke --no-gpu",
+    "smoke:packaged": "node scripts/smoke-packaged.js",
     "test:loop": "node scripts/test-agent-loop.js",
     "test:tools": "node scripts/test-tools.js",
     "test:modeling": "node scripts/test-modeling.js",
