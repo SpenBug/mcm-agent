@@ -253,8 +253,13 @@ npm run dist           # 出 NSIS 安装包 + 便携版到 dist/
 
 **没有服务器，全部本地验证，成本 0 元。**
 
-- 详细流程见 [卖家手册](docs/卖家手册.md)（含价目表、`--competition` 参数、台账迁移）
-- 网页签发器：双击 `tools/keygen.html`（Chrome/Edge，自动自验）
+- 详细流程见 [卖家手册](docs/卖家手册.md)（含价目表、`--competition` 参数、台账迁移、邀请码记账）
+- **日常发卡用**：双击 `tools/签发卡密.bat`（本地服务，只监听 127.0.0.1，卡直接进 `tools/issued.csv`）
+- 备用：双击 `tools/keygen.html`（纯网页，手边没 Node 时用）。
+  ⚠️ 它的台账在浏览器本地，**用完要 `node tools/issue.js import <导出的csv>` 并回 issued.csv**，
+  否则那些买家来领推荐奖时你查不到。
+- 赛事与售价只有一个真源 `src/main/competitions.js`；网页签发器的下拉由
+  `node scripts/sync-keygen-options.js` 生成，`npm test` 会盯住漂移（改了定价忘了同步 → 测试红）。
 - ⚠️ **私钥备份**：`keys/license-private.pem` 丢了就再也发不出新卡（已发的还能用）。
   备份到至少两处离线介质，**别传网盘/GitHub**（`.gitignore` 已排除 `keys/`）。
 

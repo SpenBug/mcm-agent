@@ -399,6 +399,133 @@ function cmdInvites() {
   if (due) console.log(`  ⚠️ 有 ${due} 次奖励待发放（满 ${RULES.threshold} 人送${RULES.reward}）`);
 }
 
+/**
+ * 把 CSV 里的赛事字段解析成赛事 id。
+ *
+ * 先按 id（keygen 导出的就是 id），再按中文名 / 全名兜 —— 手工改过或
+ * 从别处粘的台账常写「华数杯」而不是 huashu。
+ *
+ * ⚠️ 认不出来时**保留原值并大声警告**，不要悄悄写成 all：
+ * 台账是你收钱的凭据，把一张 ¥39 的单赛卡记成全能包，
+ * 下次对账就查不回来了 —— 宁可留个明显的脏值让你当场处理。
+ */
+function resolveCompetition(raw) {
+  const v = String(raw || '').trim();
+  if (!v) return { id: 'all', ok: true };
+  try {
+    return { id: normalizeCompetition(v), ok: true };
+  } catch { /* 继续按名字找 */ }
+  const low = v.toLowerCase();
+  const byName = comps.COMPETITIONS.find(
+    (c) => c.name === v || c.fullName === v || c.name.toLowerCase() === low || c.fullName.toLowerCase() === low,
+  );
+  if (byName) return { id: byName.id, ok: true };
+  return { id: v, ok: false };
+}
+
+/**
+ * 导入网页签发器（keygen.html）导出的 CSV 到 issued.csv。
+ *
+ * 为什么需要：keygen.html 的台账存在**浏览器 localStorage** 里，
+ * 它签的卡不会自动进 issued.csv。而 invite / invites 查邀请码只认 issued.csv
+ * —— 于是用网页发出去的卡，买家推荐满 3 人来领奖时你查不到是谁。
+ * 更要紧的是卡号：网页原先看不到 issued.csv，会重复排号（已修成读台账推号）。
+ *
+ * 表头两种都认：网页导出的是中文（卡号/机器码/赛事…），
+ * 命令行台账是英文（card/machine/competition…），便于两边来回导。
+ */
+function cmdImport() {
+  const file = argv[1] && !argv[1].startsWith('--') ? argv[1] : arg('file');
+  if (!file) {
+    console.error('✗ 用法：node tools/issue.js import <keygen导出的.csv> [--dry]');
+    process.exitCode = 2;
+    return;
+  }
+  const p = path.resolve(file);
+  if (!fs.existsSync(p)) {
+    console.error(`✗ 找不到文件：${p}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  // keygen 导出时带 UTF-8 BOM，不去掉第一列表头会变成 "\uFEFFcard" 而匹配不上。
+  // 用 \uFEFF 转义而不是直接写那个字符：肉眼看不见的东西不该出现在源码里。
+  const text = fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, '');
+  const lines = text.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 2) {
+    console.error('✗ CSV 里没有数据行（只有表头或空文件）');
+    process.exitCode = 1;
+    return;
+  }
+
+  const head = splitCsvLine(lines[0]).map((h) => h.trim().toLowerCase());
+  const at = (names) => head.findIndex((h) => names.includes(h));
+  const COLS = {
+    card: at(['card', '卡号']),
+    machine: at(['machine', '机器码']),
+    edition: at(['edition', '版本']),
+    competition: at(['competition', '赛事']),
+    issuedAt: at(['issuedat', '签发时间']),
+    expireAt: at(['expireat', '到期时间']),
+    buyer: at(['buyer', '买家']),
+    note: at(['note', '备注']),
+  };
+  if (COLS.card < 0) {
+    console.error(`✗ CSV 里没有「卡号 / card」列，表头是：${head.join(', ')}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  const existing = new Map(readLedgerObjects().map((r) => [r.card, r]));
+  const rows = [];
+  const skipped = [];
+  const unknown = [];
+  for (const line of lines.slice(1)) {
+    const cells = splitCsvLine(line);
+    const get = (i) => (i >= 0 ? String(cells[i] ?? '').trim() : '');
+    const card = get(COLS.card);
+    if (!card) continue;
+    if (existing.has(card)) { skipped.push(card); continue; }   // 不覆盖已有记录
+    const comp = resolveCompetition(get(COLS.competition));
+    if (!comp.ok) unknown.push(`${card}: "${get(COLS.competition)}"`);
+    rows.push({
+      card,
+      machine: normalizeMachine(get(COLS.machine)),
+      edition: get(COLS.edition) || 'pro',
+      competition: comp.id,
+      issuedAt: get(COLS.issuedAt),
+      expireAt: get(COLS.expireAt),
+      buyer: get(COLS.buyer),
+      note: get(COLS.note),
+    });
+  }
+
+  console.log(`\n导入 ${path.basename(p)}：新增 ${rows.length} 张，跳过重复 ${skipped.length} 张`);
+  if (unknown.length) {
+    console.log(`\n  ⚠️ ${unknown.length} 张卡的赛事名对不上任何已知赛事，已按原样记入台账：`);
+    for (const u of unknown.slice(0, 10)) console.log('     ' + u);
+    console.log('     没有偷偷改成 all —— 台账是收钱的凭据，记错了查不回来。');
+    console.log('     请核对后手工改正（可先 --dry 看清单，再 `npm run issue -- list` 复查）。');
+  }
+  if (flag('dry')) {
+    console.log('  （--dry 只预演，不写入）\n');
+    return;
+  }
+  for (const r of rows) appendLedger(r);
+  if (rows.length) console.log(`  ✓ 已写入 ${LEDGER}`);
+  if (skipped.length) console.log(`  · 已存在未覆盖：${skipped.slice(0, 6).join(', ')}${skipped.length > 6 ? ' …' : ''}`);
+
+  // 邀请码是这套台账最常被回查的字段，导完直接列出来省一次 list
+  if (rows.length) {
+    console.log('\n  卡号'.padEnd(18) + '邀请码'.padEnd(10) + '赛事');
+    console.log('  ' + '-'.repeat(46));
+    for (const r of rows) {
+      console.log('  ' + r.card.padEnd(16) + comps.inviteCodeFromCard(r.card).padEnd(8) + r.competition);
+    }
+  }
+  console.log('');
+}
+
 // -------------------------------------------------------------- usage
 function usage() {
   console.log(`
@@ -430,6 +557,11 @@ function usage() {
   node tools/issue.js invites
       查看推荐统计与待发奖励
 
+  node tools/issue.js import <csv> [--dry]
+      把网页签发器（keygen.html）导出的台账并进 issued.csv
+      ⚠️ 网页签的卡默认只存在浏览器里，不导进来，
+      invite/invites 就查不到那些买家 —— 领奖时会认不出人。
+
 ⚠️ 这个工具持有私钥，绝不能发给用户。
 `);
 }
@@ -443,6 +575,7 @@ if (require.main === module) {
     case 'list': cmdList(); break;
     case 'invite': cmdInvite(); break;
     case 'invites': cmdInvites(); break;
+    case 'import': cmdImport(); break;
     default: usage(); break;
   }
 }
