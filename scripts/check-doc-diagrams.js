@@ -97,6 +97,37 @@ for (const rel of FILES) {
   }
 }
 
+console.log(`\n=== ④ 文内锚点（目录 + 首屏导航等全部 href="#…"）===`);
+/** GitHub 锚点规则：小写 → 去掉非（字母数字/空格/连字符/下划线/中日韩）→ 空格转连字符 */
+function slug(title) {
+  return title
+    .trim()
+    .toLowerCase()
+    .replace(/[^\w\s\u4e00-\u9fff-]/g, '')
+    .replace(/\s+/g, '-');
+}
+for (const rel of ['README.md']) {
+  const p = path.join(ROOT, rel);
+  if (!fs.existsSync(p)) continue;
+  const text = fs.readFileSync(p, 'utf8');
+  const ids = new Set(
+    [...text.matchAll(/^(#{1,6})\s+(.+)$/gm)].map((m) => slug(m[2].replace(/\s*#+\s*$/, ''))),
+  );
+  // 覆盖**所有** in-text 锚点，不只是目录节 ——
+  // 实测教训：首屏导航那排 <a href="#…"> 就是被漏掉的"第二处手抄"，
+  // 重编号后 4 个锚点在 GitHub 上点了没反应。
+  const anchors = [...new Set(
+    [...text.matchAll(/\]\(#([^)]+)\)/g)].map((m) => m[1])
+      .concat([...text.matchAll(/<a[^>]+href="#([^"]+)"/g)].map((m) => m[1])),
+  )];
+  let bad = 0;
+  for (const a of anchors) {
+    if (!ids.has(a)) { console.log(`  ✗ ${rel}: #${a} 无对应标题`); bad += 1; }
+  }
+  if (bad) { fail += bad; }
+  else { console.log(`  ✓ ${rel}：${anchors.length} 个锚点全部有效（标题 ${ids.size} 个）`); pass += 1; }
+}
+
 console.log(`\nmermaid 块总数: ${totalBlocks}   通过项: ${pass}   问题: ${fail}`);
 if (fail) {
   console.log('\n  提示：这两类问题在源码里看不出来，只有渲染时才暴露 ——');
