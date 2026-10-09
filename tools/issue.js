@@ -80,6 +80,30 @@ function sign(payload, priv) {
   return body + '.' + sig;
 }
 
+/**
+ * 下一个卡号序号 = **当年已发的最大序号 + 1**，不是「台账行数 + 1」。
+ *
+ * ⚠️ 原先写的是 `readLedger().length + 1`，只要台账出现过空洞就会**撞号**：
+ *   空洞很常见 —— keygen.html 在浏览器里删一条记录，导出 CSV 再 `issue.js import`
+ *   进来（README 明确要求卖家做的动作），台账就缺号了。
+ *   实测复现：导入 0001、0003（缺 0002）后，count+1 算出 0003 ——
+ *   与已付款的客户丙同卡号。
+ *
+ * 撞号不只是台账难看：邀请码 = 卡号后 6 位，两个买家会持有同一个邀请码，
+ * 而 whoIs() 用 find() 只返回第一条 —— 第二个人的推荐奖励永远记不到他头上。
+ *
+ * 与 keygen.html 的 nextSeq() 保持同一套算法（按当年取最大，跨年重新从 1 起）。
+ */
+function nextSeq(year, rows = readLedger()) {
+  let max = 0;
+  for (const r of rows) {
+    const m = /^MCM-(\d{4})-(\d{4})$/.exec(String(r.card || ''));
+    if (!m || Number(m[1]) !== year) continue;
+    max = Math.max(max, Number(m[2]));
+  }
+  return max + 1;
+}
+
 // ---------------------------------------------------------------- new
 /**
  * 签发一张卡密。**核心逻辑抽成函数**，方便被测试直接调用 ——
@@ -105,8 +129,9 @@ function issue({ machine, days, until, edition = 'pro', competition, buyer = '',
     expireAt = now + n * 24 * 3600 * 1000;
   }
 
-  const seq = (readLedger().length + 1).toString().padStart(4, '0');
-  const card = `MCM-${new Date(now).getFullYear()}-${seq}`;
+  const year = new Date(now).getFullYear();
+  const seq = nextSeq(year).toString().padStart(4, '0');
+  const card = `MCM-${year}-${seq}`;
 
   const payload = { card, machine: m, edition, competition: comp, expireAt, issuedAt: now, buyer };
   const credential = sign(payload, priv);
@@ -581,7 +606,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  issue, sign, normalizeMachine, pretty, readLedger, LEDGER,
+  issue, sign, normalizeMachine, pretty, readLedger, LEDGER, nextSeq,
   recordInvite, countInvites, inviteStats, whoIs,
   INVITE_LEDGER,
 };

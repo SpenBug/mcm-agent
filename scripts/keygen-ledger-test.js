@@ -165,8 +165,53 @@ console.log('\n=== ⑤ 卡号与邀请码的唯一性（商业上的硬要求）
 console.log('\n=== ⑥ keygen 与 issue.js 的卡号格式一致 ===');
 {
   const issueSrc = fs.readFileSync(path.join(ROOT, 'tools', 'issue.js'), 'utf8');
-  check('issue.js 用同样的 MCM-年-4位序号', /MCM-\$\{new Date\(now\)\.getFullYear\(\)\}-\$\{seq\}/.test(issueSrc));
+  check('issue.js 用同样的 MCM-年-4位序号', /MCM-\$\{year\}-\$\{seq\}/.test(issueSrc));
   check('序号同为 4 位补零', /padStart\(4,\s*'0'\)/.test(issueSrc));
+}
+
+/**
+ * ⑥B issue.js 自己的排号必须也是 max+1。
+ *
+ * 为什么单独测：⑥ 只比对**源码文本**，而文本一致不代表算法一致。
+ * 真实缺陷就在这儿 —— issue.js 一度写的是 `readLedger().length + 1`（行数+1），
+ * keygen 是 max+1。台账有空洞时两者就分叉：
+ *   导入 0001、0003（缺 0002）→ count+1 算出 0003，与已付款客户同号。
+ * 空洞的常见来源正是 README 要求卖家做的 `issue.js import`（keygen 里删过记录再导出）。
+ * 上一版这个套件只测了 keygen 侧的 nextSeq，CLI 侧一次都没测到，所以漏了。
+ */
+console.log('\n=== ⑥B issue.js 排号：有空洞也不能撞号（max+1，不是 count+1）===');
+{
+  process.env.MCM_LEDGER = path.join(os.tmpdir(), `nope-${process.pid}-never-read.csv`);
+  const { nextSeq } = require(path.join(ROOT, 'tools', 'issue.js'));
+  const Y = 2026;
+
+  check('空台账 → 0001', nextSeq(Y, []) === 1);
+  check('连续 1..3 → 4', nextSeq(Y, [{ card: 'MCM-2026-0001' }, { card: 'MCM-2026-0002' }, { card: 'MCM-2026-0003' }]) === 4);
+  check('乱序台账 → 仍取最大值 +1', nextSeq(Y, [{ card: 'MCM-2026-0006' }, { card: 'MCM-2026-0001' }]) === 7);
+  check('有空洞（0001,0003）→ 4 而不是 3', nextSeq(Y, [{ card: 'MCM-2026-0001' }, { card: 'MCM-2026-0003' }]) === 4);
+  check('跨年：只有 2027 的卡 → 本年从 1 起', nextSeq(Y, [{ card: 'MCM-2027-0042' }]) === 1);
+  check('畸形卡号不参与排号', nextSeq(Y, [{ card: 'GARBAGE' }, { card: 'MCM-2026-9999' }]) === 10000);
+  check('缺 card 字段不崩', nextSeq(Y, [{ buyer: '甲' }, { card: 'MCM-2026-0002' }]) === 3);
+
+  // 关键不变量：连续签发必须互不相同（count+1 在有空洞时会立刻违反）
+  const rows = [{ card: 'MCM-2026-0001' }, { card: 'MCM-2026-0003' }];
+  const issued = [];
+  for (let i = 0; i < 4; i += 1) {
+    const n = nextSeq(Y, rows);
+    const card = `MCM-${Y}-${String(n).padStart(4, '0')}`;
+    issued.push(card);
+    rows.push({ card });
+  }
+  check('从空洞台账连发 4 张互不相同', new Set(issued).size === 4, issued.join(','));
+  check('且都不与导入的两张撞号', !issued.includes('MCM-2026-0001') && !issued.includes('MCM-2026-0003'), issued.join(','));
+  const codes = issued.map((c) => require('../src/main/competitions').inviteCodeFromCard(c));
+  check('邀请码互不相同', new Set(codes).size === 4, codes.join(','));
+
+  // 反向守卫：确认这条测试真的抓得住 count+1（否则它和没写一样）
+  const countPlusOne = (rs) => rs.length + 1;
+  const hole = [{ card: 'MCM-2026-0001' }, { card: 'MCM-2026-0003' }];
+  check('反证：count+1 在空洞台账下会给出 3（撞号）', countPlusOne(hole) === 3 && nextSeq(Y, hole) === 4,
+    `count+1=${countPlusOne(hole)} max+1=${nextSeq(Y, hole)}`);
 }
 
 /**
