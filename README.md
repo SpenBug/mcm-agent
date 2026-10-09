@@ -19,6 +19,23 @@
 
 ---
 
+## 下载安装
+
+**最新版：v1.1.0** —— [全部发布版本](https://github.com/SpenBug/mcm-agent/releases/latest)
+
+| 下载 | 说明 |
+|---|---|
+| [**安装版**（推荐）](https://github.com/SpenBug/mcm-agent/releases/download/v1.1.0/ayigu-mcm-agent-setup-1.1.0.exe) | 装到系统，有开始菜单与桌面快捷方式 |
+| [便携版](https://github.com/SpenBug/mcm-agent/releases/download/v1.1.0/ayigu-mcm-agent-portable-1.1.0.exe) | 免安装，双击即用，可放 U 盘 |
+
+两个包功能完全相同。**Windows 10/11 x64**，打开即免费体验 2 小时（全功能，产出带体验水印）。
+
+> ⚠️ 本版 exe **未做代码签名**，Windows SmartScreen 可能提示「未知发布者」，
+> 点「更多信息 → 仍要运行」即可。校验完整性可对下载文件算 SHA256：
+> `ayigu-mcm-agent-setup-1.1.0.exe` = `c44d40035c602eecd92d83168b928c9633f84689e0f2d6e36636a9da8b56334c`
+
+---
+
 ## 一、它解决什么
 
 | 常见痛点 | 阿一古数模的做法 |
