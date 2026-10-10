@@ -40,10 +40,11 @@ const SUITES = [
   ['文档图表与换行符', 'scripts/check-doc-diagrams.js'],
   ['首屏空态动效', 'scripts/check-empty-state-motion.js'],
   ['签发器赛事选项与定价同源', 'scripts/sync-keygen-options.js', ['--check']],
+  ['签发器应用 vendor 同源', 'scripts/sync-issuer-app.js', ['--check']],
   ['签发器与客户端密钥/定价一致', 'scripts/issuer-consistency-test.js'],
   ['签发器卡号与台账（keygen）', 'scripts/keygen-ledger-test.js'],
+  ['签发器独立应用', 'scripts/issuer-app-test.js'],
 ];
-
 /**
  * 反向守卫：scripts/ 下每个 *-test.js 与 check-*.js 都必须出现在 SUITES 里。
  *

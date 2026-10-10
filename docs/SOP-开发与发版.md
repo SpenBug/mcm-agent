@@ -4,8 +4,8 @@
 > 文中的命令与数字都来自实际运行（不是凭记忆写的），改动后请重新核对。
 >
 > - 项目：`mcm-agent`（Electron 桌面应用，Windows 10+ x64）
-> - 文档基准：v1.1.1 / 24 套离线测试
-> - 最后更新：2026-10-09
+> - 文档基准：v1.1.1 / 26 套离线测试
+> - 最后更新：2026-10-10
 >
 > （这里刻意**不写**提交数、跟踪文件数 —— 它们是 git 状态的自指：
 > 更新这个数字的那次提交本身就会让它过期。与 README 写死 SHA256 同类，
@@ -172,10 +172,26 @@ npm start              # 启动（无 GPU 环境用 npm run start:nogpu）
 **改完代码后的自检顺序**（从快到慢）：
 
 ```powershell
-npm test                    # 24 套离线测试，秒级，不需要图形界面
+npm test                    # 26 套离线测试，秒级，不需要图形界面
 npm run smoke               # 开发态端到端（UI + IPC + 真实导出），约 3 分钟
 npm run selftest:runtimes   # 技能脚本两条执行路径（需真实 Electron）
 ```
+
+**签发器独立应用**（卖家工具，与客户应用分开打包）：
+
+```powershell
+npm run issuer:sync      # 把 issuer-core / competitions / license 同步进 vendor
+npm run issuer:app       # 打包成独立 exe（NSIS 安装包 + 便携版）→ dist-issuer/
+npm run issuer:verify    # ★ 验收打包产物：asar 里无私钥/台账 + 真跑 exe 自检
+```
+
+> 改了 `tools/issuer-core.js` 或 `src/main/competitions.js` 之后**必须先 `issuer:sync`**，
+> 否则应用还是旧价 —— `npm test` 的同源守卫会拦下来，不会让你带着漂移打包。
+>
+> ⚠️ `issuer:app` 与 `issuer:verify` **需要清掉 `ELECTRON_RUN_AS_NODE`**：
+> 带着它 exe 会退化成裸 node，`--selftest` 被当非法参数，退出码 9 且什么都不写，
+> 看起来像包坏了。（本机环境默认设了这个变量，脚本内部已自动处理；
+> 手动跑 exe 时记得 `Remove-Item Env:\ELECTRON_RUN_AS_NODE`。）
 
 ---
 
@@ -285,6 +301,9 @@ git rev-parse HEAD   # 两者必须一致
 | `check-empty-state-motion.js` | 首屏动效四类炸点：关键帧动了会重排的属性、漏 `prefers-reduced-motion` 降级、**动画终值 ≠ 静态样式**（`fill:both` 会永久压住静态声明，宣传截图取的就是这个终态）、CSS 动画撞上 SVG `transform=` 呈现属性（覆盖而非叠加，机器人举的图会甩飞）。自带 `--self-test` 反向验证 |
 | `check-sop-facts.js` | SOP/README 里的命令、文件、数字与现实不符（刻意不校验提交数/文件数 —— 自指事实必然腐烂） |
 | `sync-keygen-options.js --check` | 签发器赛事选项与定价漂移（曾漏 3 个赛事、亚太赛还是旧价） |
+| `sync-issuer-app.js --check` | 独立签发器应用的 vendor 副本与真源漂移（改了定价/公钥/核心逻辑忘了同步 → 应用按旧价卖卡）。同时硬拦 **vendor 里出现私钥或台账** —— 应用会被分发/拷贝，带了这些等于把发卡权送人 |
+| `issuer-app-test.js` | 第 4 个签发入口（桌面应用）的离线链路：结构完整、`main.js` 不自算卡号/价格、vendor 无敏感内容、签发→验签→台账→邀请→导入导出 |
+| `issuer-consistency-test.js` | 四个入口（命令行 / 旧 HTTP 服务 / keygen 网页 / 桌面应用）与客户端**同源**：公钥、赛事、定价、competition 透传、台账列映射 |
 | `icon-check.js` | 图标形状退化 / 产物过期（用**内容指纹**，不用 mtime） |
 
 **孤儿守卫**：`run-all-tests.js` 会检查 `scripts/*-test.js` **与 `scripts/check-*.js`**

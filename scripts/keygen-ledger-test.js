@@ -164,9 +164,15 @@ console.log('\n=== ⑤ 卡号与邀请码的唯一性（商业上的硬要求）
 
 console.log('\n=== ⑥ keygen 与 issue.js 的卡号格式一致 ===');
 {
+  // 卡号格式的实现在 issuer-core.js（命令行/HTTP/桌面应用共用一份）。
+  // 断言要跟着逻辑走，别钉死在某个入口文件上 —— 否则搬一次家就误报一次。
+  const coreSrc = fs.readFileSync(path.join(ROOT, 'tools', 'issuer-core.js'), 'utf8');
+  check('核心用 MCM-年-4位序号', /MCM-\$\{year\}-\$\{seq\}/.test(coreSrc));
+  check('序号同为 4 位补零', /padStart\(4,\s*'0'\)/.test(coreSrc));
+  // 顺带确认命令行版确实走的是核心，而不是自己又抄了一份
   const issueSrc = fs.readFileSync(path.join(ROOT, 'tools', 'issue.js'), 'utf8');
-  check('issue.js 用同样的 MCM-年-4位序号', /MCM-\$\{year\}-\$\{seq\}/.test(issueSrc));
-  check('序号同为 4 位补零', /padStart\(4,\s*'0'\)/.test(issueSrc));
+  check('issue.js 复用核心（不自己算卡号）', /require\(['"]\.\/issuer-core['"]\)/.test(issueSrc)
+    && !/MCM-\$\{/.test(issueSrc), 'issue.js 里又出现了卡号拼装，说明逻辑被抄回去了');
 }
 
 /**

@@ -57,6 +57,10 @@ const PEM = /-----BEGIN [A-Z ]*-----[\s\S]*?-----END [A-Z ]*-----/;
 
 const issuerJs = read('tools/issuer.js');
 const issueJs = read('tools/issue.js');
+// 签发算法与数据已收进 issuer-core.js（四个入口共用一份，见该文件顶部注释）。
+// 断言"默认 all"这类**行为**时要认准它的真实所在，否则测试会因为
+// "代码搬了个家"而变红 —— 那是假警报，会训练人忽略红灯。
+const coreJs = read('tools/issuer-core.js');
 const keygenHtml = read('tools/keygen.html');
 const licenseJs = read('src/main/license.js');
 
@@ -137,7 +141,9 @@ console.log('\n=== ③ competition 必须透传（否则单赛卡签成全能包
 const issueCall = issuerJs.slice(issuerJs.indexOf('issue({'), issuerJs.indexOf('issue({') + 500);
 check('issuer.js 把 competition 传给 issue()', /competition:\s*b\.competition/.test(issueCall),
   '没透传 → 默认 all，卖 ¥39 的单赛卡会给到全能包权限');
-check('issue.js 未传时默认 all（老行为，需被界面堵住）', /normalizeCompetition\(competition\)/.test(issueJs));
+// ⚠️ 这条断言的是**核心行为**（不传时默认 all），实现已移到 issuer-core.js。
+// 行为本身没变：界面必须堵住它，不能靠核心兜底 —— 见下面那条界面断言。
+check('核心：未传时默认 all（老行为，需被界面堵住）', /normalizeCompetition\(competition\)/.test(coreJs));
 check('界面有赛事下拉', /id="competition"/.test(issuerJs));
 check('签发结果回显赛事与价格', /competitionName/.test(issuerJs) && /price/.test(issuerJs));
 
@@ -202,6 +208,64 @@ if (privPem) {
   }
 } else {
   console.log('  · 私钥不在本机，跳过端到端');
+}
+
+// ---------------------------------------------------------------- ⑥ 应用
+/**
+ * 第 4 个入口：独立桌面应用（tools/issuer-app）。
+ *
+ * 它跑在打包后的 asar 里，用的是 vendor/ 下的**副本**，所以最容易漂移：
+ * 有人改了 src/main/competitions.js 的定价，忘了跑 sync-issuer-app.js，
+ * 应用就会按旧价卖。这里直接**比对内容**（不看时间戳），改了真源没同步就红。
+ */
+console.log('\n=== ⑥ 独立应用与真源同源（第 4 个入口，最容易漂）===');
+const VENDOR = path.join(ROOT, 'tools', 'issuer-app', 'vendor');
+const SYNC = [
+  ['src/main/competitions.js', 'competitions.js'],
+  ['src/main/license.js', 'license.js'],
+  ['tools/issuer-core.js', 'issuer-core.js'],
+];
+for (const [srcRel, vendorName] of SYNC) {
+  const vp = path.join(VENDOR, vendorName);
+  if (!fs.existsSync(vp)) { check(`vendor/${vendorName} 存在`, false, '跑 node scripts/sync-issuer-app.js'); continue; }
+  const srcText = read(srcRel);
+  const vendText = fs.readFileSync(vp, 'utf8');
+  /* 生成的文件带"勿手改"横幅，issuer-core 的 require 路径也被改写过，
+     所以不能整文件相等 —— 比对**关键事实**，比字符串相等更耐改。 */
+  if (vendorName === 'license.js') {
+    /* ⚠️ 公钥必须从 license.js 比对：它是客户端验签的真源。
+       上一版把公钥断言也套在 competitions.js 上，而那个文件里根本没有公钥 ——
+       两边都取到空串、永远相等，等于一条空转的断言（反向验证时才发现）。
+       所以这里先断言"确实抓到了公钥"，再比内容。 */
+    const pk = (t) => (t.match(/-----BEGIN PUBLIC KEY-----[\s\S]*?-----END PUBLIC KEY-----/) || [''])[0].replace(/\s+/g, '');
+    const a = pk(srcText); const b = pk(vendText);
+    check('vendor/license.js 里有公钥（否则下面的比对是空转）', a.length > 40 && b.length > 40, `len=${a.length}/${b.length}`);
+    check('vendor/license.js 的公钥与真源一致', a === b && a.length > 40, '换了密钥对而应用没同步 → 应用验的卡与客户端不一致');
+  } else if (vendorName === 'competitions.js') {
+    const digest = (t) => ({
+      prices: (t.match(/[a-z_]+:\s*\d+/g) || []).join(','),
+      ids: (t.match(/id:\s*'[a-z_]+'/g) || []).join(','),
+    });
+    const a = digest(srcText); const b = digest(vendText);
+    check('vendor/competitions.js 里有价格与赛事 id（否则比对是空转）', a.prices.length > 0 && a.ids.length > 0);
+    check('vendor/competitions.js 的价格与赛事 id 同源', a.prices === b.prices && a.ids === b.ids,
+      `价格 ${a.prices} vs ${b.prices}`);
+  } else {
+    // issuer-core：核心逻辑（排号/签发/导入）必须逐字一致
+    const strip = (t) => t.replace(/^\/\*[\s\S]*?\*\/\n/, '').replace(/require\('\.\/competitions'\)/g, "require('__C__')")
+      .replace(/require\('\.\/license'\)/g, "require('__L__')")
+      .replace(/require\(path\.join\(__dirname,\s*'\.\.',\s*'src',\s*'main',\s*'competitions'\)\)/g, "require('__C__')")
+      .replace(/require\(path\.join\(__dirname,\s*'\.\.',\s*'src',\s*'main',\s*'license'\)\)/g, "require('__L__')")
+      .replace(/\s+/g, ' ').trim();
+    check('vendor/issuer-core.js 与 tools/issuer-core.js 同源', strip(srcText) === strip(vendText),
+      '逻辑漂移了 —— 跑 node scripts/sync-issuer-app.js');
+  }
+}
+// 应用不能自带私钥/台账
+for (const f of fs.readdirSync(VENDOR)) {
+  const t = fs.readFileSync(path.join(VENDOR, f), 'utf8');
+  check(`vendor/${f} 无敏感内容`, !/-----BEGIN [A-Z ]*PRIVATE KEY-----/.test(t)
+    && !/^card,machine,edition/m.test(t));
 }
 
 console.log(`\n结果：${pass}/${pass + fail} 通过`);

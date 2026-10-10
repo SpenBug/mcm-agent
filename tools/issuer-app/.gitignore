@@ -1,0 +1,4 @@
+# 本应用**没有**运行时依赖（复用仓库根 node_modules 里的 electron 与
+# electron-builder），但打包过程中 electron-builder 会自动生成一个空
+# package-lock.json —— 那是构建副产物，别提交。
+package-lock.json

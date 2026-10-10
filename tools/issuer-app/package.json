@@ -1,0 +1,55 @@
+{
+  "name": "ayigu-issuer",
+  "productName": "阿一古数模签发器",
+  "version": "1.0.0",
+  "description": "阿一古数模 · 卡密签发器（卖家工具，切勿分发）",
+  "private": true,
+  "main": "src/main.js",
+  "author": {
+    "name": "SpenBug",
+    "email": "921828874@qq.com"
+  },
+  "license": "UNLICENSED",
+  "build": {
+    "appId": "com.spenbug.ayigu-issuer",
+    "productName": "阿一古数模签发器",
+    "directories": {
+      "output": "../../dist-issuer"
+    },
+    "files": [
+      "src/**/*",
+      "vendor/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "../../build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "阿一古数模签发器",
+      "artifactName": "ayigu-issuer-setup-${version}.exe"
+    },
+    "portable": {
+      "artifactName": "ayigu-issuer-${version}.exe"
+    }
+  }
+}
