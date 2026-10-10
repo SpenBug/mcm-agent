@@ -4,7 +4,7 @@
 > 文中的命令与数字都来自实际运行（不是凭记忆写的），改动后请重新核对。
 >
 > - 项目：`mcm-agent`（Electron 桌面应用，Windows 10+ x64）
-> - 文档基准：v1.1.1 / 26 套离线测试
+> - 文档基准：v1.2.0 / 26 套离线测试
 > - 最后更新：2026-10-10
 >
 > （这里刻意**不写**提交数、跟踪文件数 —— 它们是 git 状态的自指：
@@ -258,8 +258,8 @@ npm run smoke:packaged   # ★ 对打包出的 exe 跑冒烟（约 5 分钟）
 ```powershell
 curl.exe -X POST -H "Authorization: Bearer $TOKEN" `
   -H "Content-Type: application/octet-stream" `
-  --data-binary "@dist/阿一古数模 Setup 1.1.1.exe" `
-  "https://uploads.github.com/repos/<owner>/<repo>/releases/<id>/assets?name=ayigu-mcm-agent-setup-1.1.1.exe"
+  --data-binary "@dist/阿一古数模 Setup 1.2.0.exe" `
+  "https://uploads.github.com/repos/<owner>/<repo>/releases/<id>/assets?name=ayigu-mcm-agent-setup-1.2.0.exe"
 ```
 
 ### 步骤 7 · 验证下载链接

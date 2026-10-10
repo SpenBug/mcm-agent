@@ -56,12 +56,12 @@
 
 ## 下载安装
 
-**最新版：v1.1.1** —— [全部发布版本](https://github.com/SpenBug/mcm-agent/releases/latest)
+**最新版：v1.2.0** —— [全部发布版本](https://github.com/SpenBug/mcm-agent/releases/latest)
 
 | 下载 | 说明 |
 |---|---|
-| [**安装版**（推荐）](https://github.com/SpenBug/mcm-agent/releases/download/v1.1.1/ayigu-mcm-agent-setup-1.1.1.exe) | 装到系统，有开始菜单与桌面快捷方式 |
-| [便携版](https://github.com/SpenBug/mcm-agent/releases/download/v1.1.1/ayigu-mcm-agent-portable-1.1.1.exe) | 免安装，双击即用，可放 U 盘 |
+| [**安装版**（推荐）](https://github.com/SpenBug/mcm-agent/releases/download/v1.2.0/ayigu-mcm-agent-setup-1.2.0.exe) | 装到系统，有开始菜单与桌面快捷方式 |
+| [便携版](https://github.com/SpenBug/mcm-agent/releases/download/v1.2.0/ayigu-mcm-agent-portable-1.2.0.exe) | 免安装，双击即用，可放 U 盘 |
 
 > 上面的直链带版本号，**每次发版都会变**。懒得看版本就直接进
 > [Releases 页面](https://github.com/SpenBug/mcm-agent/releases/latest) 拿最新那个。
