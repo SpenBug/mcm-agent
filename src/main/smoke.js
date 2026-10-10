@@ -487,6 +487,27 @@ async function runSmokeBody(win, logs) {
         const inv = await window.mcm.invite.info();
         const hero = document.querySelector('.es-slogan .sl-hero');
         const lines = [...document.querySelectorAll('.es-slogan .sl-line')].map(n => n.textContent);
+        /* 花字「他阿一古数模 我很怕！」必须**同一行**。
+           这两句原本是 .es-slogan 的直接子元素，而它是 flex-column ——
+           于是被排成上下两行，读起来成了两句话，包袱的笑点就散了。
+           用户明确要求连成一句，所以这里量几何而不是只看文字。
+
+           ⚠️ 判据不能用 "垂直重叠 > 0"：实测两行时仍有 5px 交叠（行高所致），
+           那样写等于空转 —— 我第一版就是这么写的，靠反向验证才发现。
+           实测比值：同一行 overlap/小字高 = 1.00，上下两行 = 0.14。
+           取 0.6 作阈值，两边余量都充足。 */
+        const fear = document.querySelector('.es-slogan .sl-fear');
+        const heroR = hero ? hero.getBoundingClientRect() : null;
+        const fearR = fear ? fear.getBoundingClientRect() : null;
+        const overlap = (heroR && fearR)
+          ? Math.min(heroR.bottom, fearR.bottom) - Math.max(heroR.top, fearR.top) : 0;
+        const heroRow = {
+          fearText: fear ? fear.textContent : '',
+          overlapPx: Math.round(overlap),
+          fearHeightPx: fearR ? Math.round(fearR.height) : 0,
+          overlapRatio: (fearR && fearR.height) ? +(overlap / fearR.height).toFixed(2) : 0,
+          fearIsRight: !!(heroR && fearR) && fearR.left > heroR.left,
+        };
         document.getElementById('btnInvite')?.click();
         await new Promise(r => setTimeout(r, 600));
         const panelOpen = document.getElementById('invPanel')?.classList.contains('open');
@@ -500,6 +521,7 @@ async function runSmokeBody(win, logs) {
           hasHorse: !!document.querySelector('#brandMark path'),
           hero: hero ? hero.textContent : '',
           lines,
+          heroRow,
           panelOpen,
           codeShown,
           inviteOk: inv.ok,
@@ -527,6 +549,13 @@ async function runSmokeBody(win, logs) {
       ['马头图标已渲染', bd.hasHorse === true],
       ['花字大字 = 他阿一古数模', bd.hero === '他阿一古数模', bd.hero],
       ['花字前三行齐全', bd.lines.length === 3, bd.lines.join(' / ')],
+      ['花字包袱 = 我很怕！', bd.heroRow?.fearText === '我很怕！', bd.heroRow?.fearText],
+      // 这两条量的是几何：包进 .sl-hero-row 之前它们是上下两行，
+      // 只比文字的话改回两行也不会红，等于没守住。
+      // 阈值 0.6：实测同一行 = 1.00，两行 = 0.14（见上面的注释）。
+      ['「他阿一古数模」与「我很怕！」在同一行', (bd.heroRow?.overlapRatio ?? 0) > 0.6,
+        `重叠占小字高 ${bd.heroRow?.overlapRatio}（${bd.heroRow?.overlapPx}px / ${bd.heroRow?.fearHeightPx}px）`],
+      ['「我很怕！」在大字右侧', bd.heroRow?.fearIsRight === true],
       ['邀请面板可打开', bd.panelOpen === true],
       ['邀请接口可用', bd.inviteOk === true],
       ['邀请规则带回（减 5 / 满 3）', bd.rules?.friendDiscount === 5 && bd.rules?.threshold === 3],

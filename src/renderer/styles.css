@@ -529,6 +529,19 @@ button, textarea, input, select { font-family: inherit; font-size: inherit; colo
   .lc-line { stroke-dasharray: none; }
 }
 
+/* 渐变大字与红字包袱**同一行**。
+   .es-slogan 是 flex-column，所以这里自己起一个横向 flex 容器，
+   否则两句会被排成上下两行、读成两句话，笑点就散了。
+   align-items: baseline —— 42px 与 26px 混排时按**文字基线**对齐，
+   用默认的 stretch/center 会让小字浮在大字中间，像没对齐。 */
+.es-slogan .sl-hero-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 10px;
+  white-space: nowrap;
+}
+
 /* ---- 品牌区（横排，把纵向空间让给下面两栏）---- */
 .es-brand { display: flex; align-items: center; gap: 13px; margin-bottom: 22px; text-align: left; }
 /* 首屏品牌图标。⚠️ 保留 position:relative —— 下面的 ::after 径向光晕要靠它定位。

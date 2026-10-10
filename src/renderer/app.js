@@ -837,14 +837,17 @@
 
     div.innerHTML = `
       <!-- 背景花字标语：装饰层，pointer-events:none 不挡交互。
-           前三行是淡的引子，"他阿一古数模"是渐变大字（视觉焦点），
-           末尾"我很怕！"是红字包袱 —— 越文艺的铺垫，这句反差越好笑。 -->
+           前三行是淡的引子，"他阿一古数模 我很怕！"连成**同一行**的渐变大字 + 红字包袱。
+           ⚠️ 这两句必须包在 .sl-hero-row 里：.es-slogan 是 flex-column，
+           直接当兄弟节点会被排成上下两行，读起来就成了两句话，笑点散掉。 -->
       <div class="es-slogan" aria-hidden="true">
         <span class="sl-line">春风若有怜花意</span>
         <span class="sl-line">可否许我再少年</span>
         <span class="sl-line">但是...</span>
-        <span class="sl-hero">他阿一古数模</span>
-        <span class="sl-fear">我很怕！</span>
+        <div class="sl-hero-row">
+          <span class="sl-hero">他阿一古数模</span>
+          <span class="sl-fear">我很怕！</span>
+        </div>
       </div>
 
       <div class="es-brand">
