@@ -17,6 +17,7 @@
 """
 
 import os
+import sys
 
 import matplotlib
 
@@ -162,7 +163,10 @@ def panel_label(ax, text, loc="upper left"):
 # ---------------------------------------------------------------- 体验版水印
 
 #: 水印文案。可用环境变量 MCM_WATERMARK 覆盖（换账号时不用改代码）
-WATERMARK = os.environ.get("MCM_WATERMARK") or "体验版 · 抖音/B站 @汉谟拉比法典"
+WATERMARK = os.environ.get("MCM_WATERMARK") or "阿一古数模 · 体验版"
+
+#: 水印 logo 文件名（放在品牌素材目录，由主进程用 MCM_BRAND_DIR 指过来）
+WMARK_LOGO = "wmark-logo.png"
 
 
 def is_trial():
@@ -170,15 +174,84 @@ def is_trial():
     return os.environ.get("MCM_TRIAL") == "1"
 
 
-def stamp_watermark(fig):
-    """在右下角打体验版水印。正式版什么都不做。"""
+def watermark_logo_path():
+    """找水印 logo。
+
+    优先级：
+      1. MCM_BRAND_DIR —— 主进程注入（打包后指向 <resources>/brand）
+      2. 相对本文件的 ../../../brand —— 开发态在仓库里直接跑脚本时兜底
+    找不到返回 None，调用方退化成"只打文字"。
+    """
+    cands = []
+    env = os.environ.get("MCM_BRAND_DIR")
+    if env:
+        cands.append(os.path.join(env, WMARK_LOGO))
+    here = os.path.dirname(os.path.abspath(__file__))
+    # scripts -> mcm-figure -> skills -> resources，再进 brand（**三个** ..）
+    # 别照抄成四个：那会指到仓库根的 brand/，开发态永远找不到图，
+    # 而且失败是静默的（退化成只打文字），肉眼很难发现。
+    cands.append(os.path.normpath(os.path.join(here, "..", "..", "..", "brand", WMARK_LOGO)))
+    for p in cands:
+        if p and os.path.isfile(p):
+            return p
+    return None
+
+
+#: 水印带高度（英寸）。画在内容下方这条留白里，
+#: 体验版画东西进去、正式版留空 —— 两边**画布尺寸完全一致**。
+WMARK_STRIP_IN = 0.17
+
+
+def stamp_watermark(fig, bbox=None):
+    """在右下角打体验版水印（logo + 文字）。正式版什么都不做。
+
+    @param bbox  save 时实际用的 Bbox（英寸）。传了就把水印定位到它的右下角，
+                 这样水印一定落在成品画面内、也不会反过来把画面撑大。
+                 不传则退回按整张 figure 的右下角定位。
+    """
     if not is_trial():
         return
-    fig.text(
-        0.995, 0.008, WATERMARK,
+    from matplotlib.transforms import Bbox as _Bbox
+
+    figw = max(fig.get_figwidth(), 1e-6)
+    figh = max(fig.get_figheight(), 1e-6)
+    box = bbox if bbox is not None else _Bbox.from_extents(0, 0, figw, figh)
+
+    logo = watermark_logo_path()
+    right_in = box.x1 - 0.04          # 距右边缘
+    bottom_in = box.y0 + 0.025        # 距底边缘
+    logo_h_in = 0.115
+
+    text_right_in = right_in
+    if logo:
+        try:
+            import matplotlib.image as mpimg
+            img = mpimg.imread(logo)
+            h_px, w_px = img.shape[0], img.shape[1]
+            ratio = (w_px / h_px) if h_px else 1.0
+            logo_w_in = logo_h_in * ratio
+            ax = fig.add_axes([
+                (right_in - logo_w_in) / figw,
+                bottom_in / figh,
+                logo_w_in / figw,
+                logo_h_in / figh,
+            ])
+            ax.imshow(img)
+            ax.axis("off")
+            # ⚠️ 别让水印参与 tight bbox 计算，否则它会撑大画布：
+            #    实测体验版 1729px vs 正式版 1558px —— 同一份数据出两种尺寸，
+            #    用户买断后重新出图，论文版式会整体漂移。
+            ax.set_in_layout(False)
+            text_right_in = right_in - logo_w_in - 0.045
+        except Exception as e:                  # 读图失败不能连累出图
+            print("[mcm-figure] 水印 logo 未生效（只打文字）：%s" % e, file=sys.stderr)
+
+    t = fig.text(
+        text_right_in / figw, bottom_in / figh, WATERMARK,
         ha="right", va="bottom",
         fontsize=7.5, color="#9aa0ae", alpha=0.9,
     )
+    t.set_in_layout(False)
 
 
 def save(fig, path_no_ext, formats=("pdf", "png")):
@@ -186,27 +259,37 @@ def save(fig, path_no_ext, formats=("pdf", "png")):
 
     同时检查有没有元素被裁出画布 —— 标注被裁是这类图最常见的翻车点。
     """
+    from matplotlib.transforms import Bbox
+
     d = os.path.dirname(path_no_ext)
     if d:
         os.makedirs(d, exist_ok=True)
 
+    pad = float(plt.rcParams.get("savefig.pad_inches", 0.04) or 0.04)
+
+    # 先按**纯内容**算出范围（此时水印还没画），再统一往下扩一条水印带。
+    # 为什么不能直接交给 savefig.bbox='tight'：水印是个额外图元，
+    # 会被 tight 算进范围 → 体验版比正式版宽一截（实测 1729 vs 1558px）。
+    # 扩同一条带之后，两种版本的画布尺寸完全一致。
+    fig.canvas.draw()
+    content = fig.get_tightbbox(fig.canvas.get_renderer())
+    out_bbox = Bbox.from_extents(content.x0 - pad, content.y0 - WMARK_STRIP_IN - pad,
+                                 content.x1 + pad, content.y1 + pad)
+
     # ⚠️ 水印必须在 savefig **之前**打 —— 打完再存才进得去文件
-    stamp_watermark(fig)
+    stamp_watermark(fig, out_bbox)
 
     out = []
     for fmt in formats:
         p = "%s.%s" % (path_no_ext, fmt)
-        fig.savefig(p, format=fmt)
+        fig.savefig(p, format=fmt, bbox_inches=out_bbox)
         out.append(p)
 
-    # 画布边界检查：tight bbox 之外若还有可见图元，说明有东西被裁
-    fig.canvas.draw()
-    renderer = fig.canvas.get_renderer()
-    tb = fig.get_tightbbox(renderer)
-    fb = fig.bbox_inches
+    # 画布边界检查：内容（不含水印）若超出整张 figure，说明有东西被裁
+    figw, figh = fig.get_figwidth(), fig.get_figheight()
     overflow = []
-    for name, edge in (("左", tb.x0 < -0.01), ("右", tb.x1 > fb.width + 0.01),
-                       ("下", tb.y0 < -0.01), ("上", tb.y1 > fb.height + 0.01)):
+    for name, edge in (("左", content.x0 < -0.01), ("右", content.x1 > figw + 0.01),
+                       ("下", content.y0 < -0.01), ("上", content.y1 > figh + 0.01)):
         if edge:
             overflow.append(name)
     if overflow:

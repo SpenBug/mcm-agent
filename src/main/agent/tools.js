@@ -165,12 +165,17 @@ function truncate(text) {
   return `${s.slice(0, MAX_OUTPUT)}\n\n...（输出过长，已截断，共 ${s.length} 字符）`;
 }
 
-/** 子进程统一环境变量：UTF-8 I/O + 工作区根 / 技能库根，供脚本与文档命令兜底 */
+/** 子进程统一环境变量：UTF-8 I/O + 工作区根 / 技能库根 / 品牌素材目录，供脚本与文档命令兜底 */
 function processEnv(workspaceOrCwd) {
   let skillsRoot = '';
+  let brandDir = '';
   try {
     // 延迟 require 避免与 paths 形成循环依赖
-    skillsRoot = require('../paths').getSkillsRoot();
+    const paths = require('../paths');
+    skillsRoot = paths.getSkillsRoot();
+    // 体验版水印要读 resources/brand/wmark-logo.png —— 技能脚本在用户机器上
+    // 没有仓库相对路径可走（打包后在 <resources>/brand），只能由这里告诉它。
+    brandDir = paths.getBrandDir();
   } catch { /* 测试环境下可能取不到，留空即可 */ }
   return {
     ...process.env,
@@ -184,6 +189,7 @@ function processEnv(workspaceOrCwd) {
     // 由 cmd 展开成绝对路径 —— 这样文档跨机器可读，照抄也能跑通
     // （写死绝对路径的文档换台机器就废，写相对 skills/ 又必然找不到文件）
     MCM_SKILL_ROOT: skillsRoot,
+    MCM_BRAND_DIR: brandDir,
   };
 }
 

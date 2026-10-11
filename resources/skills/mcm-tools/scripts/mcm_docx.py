@@ -211,7 +211,28 @@ def _add_blocks(doc, blocks, stats):
 
 # ---------------------------------------------------------------- 体验版水印
 
-WATERMARK_DEFAULT = "体验版 · 抖音/B站 @汉谟拉比法典"
+WATERMARK_DEFAULT = "阿一古数模 · 体验版"
+
+#: 水印 logo 文件名（与 mcm_style 用同一张，保证图表与论文的水印长得一样）
+WMARK_LOGO = "wmark-logo.png"
+
+
+def watermark_logo_path():
+    """找水印 logo：优先主进程注入的 MCM_BRAND_DIR，其次按仓库相对路径兜底。
+
+    scripts -> mcm-tools -> skills -> resources，再进 brand（**三个** ..）。
+    找不到返回 None，调用方退化成只打文字水印。
+    """
+    cands = []
+    env = os.environ.get("MCM_BRAND_DIR")
+    if env:
+        cands.append(os.path.join(env, WMARK_LOGO))
+    here = os.path.dirname(os.path.abspath(__file__))
+    cands.append(os.path.normpath(os.path.join(here, "..", "..", "..", "brand", WMARK_LOGO)))
+    for p in cands:
+        if p and os.path.isfile(p):
+            return p
+    return None
 
 #: Word 真水印（页眉里的 VML 艺术字，斜排 315°、居中、淡灰）
 #: python-docx 没有水印 API，只能把这段原始 XML 注入页眉。
@@ -259,20 +280,54 @@ def watermark_text():
 
 
 def apply_watermark(doc):
-    """给每个 section 的页眉注入斜排水印。正式版什么都不做。"""
+    """给每个 section 的页眉加水印。正式版什么都不做。
+
+    两层，各有用途：
+      1. **斜排 VML 文字水印**（页面正中、315°、淡灰、压在正文下）——
+         这是防删的那层：Word 里它是页眉里的图形对象，导出 PDF 也带着。
+      2. **页眉 logo + 文字**（每页顶部一行）—— 品牌可见层，
+         截图/转发时一眼看出是「阿一古数模 · 体验版」。
+
+    为什么不让 logo 也进 VML：VML 的 textpath 只能描文字，塞不进位图；
+    而两个浮动图形要手工对齐，缩放一变就错位。分成两层各用各的机制，
+    反而都不容易坏。
+    """
     if not is_trial():
         return False
-    from docx.oxml.ns import qn
-    import copy
+    from docx.shared import Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-    text = watermark_text().replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
-    xml = _WM_VML.replace("__TEXT__", text)
+    text = watermark_text()
+    xml = _WM_VML.replace(
+        "__TEXT__",
+        text.replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;"),
+    )
+    logo = watermark_logo_path()
+
     for sec in doc.sections:
         header = sec.header
         header.is_linked_to_previous = False
         # 清掉已有段落，避免重复叠加
         for p in list(header.paragraphs):
             p._element.getparent().remove(p._element)
+
+        # ① 品牌行：logo + 文字（找不到 logo 时只打文字，不报错）
+        line = header.add_paragraph()
+        line.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        if logo:
+            try:
+                run = line.add_run()
+                run.add_picture(logo, height=Pt(11))
+            except Exception as e:
+                print("[mcm-docx] 水印 logo 未生效（只打文字）：%s" % e, file=sys.stderr)
+        # 文案始终完整：有 logo 时它是「logo + 阿一古数模 · 体验版」，
+        # 没 logo 时至少文字还在。别写成条件式 —— 两边其实是一样的，
+        # 那种写法会让人以为有差异而去查（我上一版就写了个废三元）。
+        label = line.add_run(text)
+        label.font.size = Pt(8)
+        label.font.color.rgb = RGBColor(0xB4, 0xB9, 0xC4)
+
+        # ② 斜排 VML 水印（原始 XML 注入，python-docx 没有水印 API）
         from docx.oxml import parse_xml
         header._element.append(parse_xml(xml))
     return True
