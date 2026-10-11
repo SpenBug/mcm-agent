@@ -26,7 +26,9 @@ const FIX = process.argv.includes('--fix');
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
 const version = pkg.version;
 const readmePath = path.join(ROOT, 'README.md');
-const readme = fs.readFileSync(readmePath, 'utf8');
+// let（不是 const）：--fix 替换后要把改后的内容读回来，
+// 否则下面②仍拿旧文本校验直链，明明改对了却报错。
+let readme = fs.readFileSync(readmePath, 'utf8');
 
 // ---------- ① README 里所有 vX.Y.Z 必须都是当前版本 ----------
 const mentioned = [...new Set([...readme.matchAll(/v(\d+\.\d+\.\d+)/g)].map((m) => m[1]))];
@@ -57,6 +59,12 @@ if (stale.length) {
     fs.writeFileSync(readmePath, out, 'utf8');
     console.log(`\n✓ 已自动替换为 v${version}（请复查 diff 后再提交）`);
     bad = 0;
+    // ⚠️ 必须把改后的内容读回 readme：下面②从 readme 提取下载直链，
+    // 若继续用替换前的旧文本，刚改对的链接会被判成「tag ≠ 当前版本」，
+    // 于是 --fix 明明成功却报 4 项失败 —— 实测踩过，会让人以为 --fix 没生效
+    // 而手动再改一遍（反向验证见 _scratch/verify-version-fix.js 的思路：
+    // 制造漂移 → 跑 --fix → 期望退出码 0）。
+    readme = out;
   }
 } else {
   console.log('✓ README 版本号与 package.json 一致');
