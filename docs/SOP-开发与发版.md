@@ -161,6 +161,32 @@ foreach($h in 'github.com','api.github.com','codeload.github.com'){
 > 匿名读 Release 返回 200 = 外部可见；附件返回 206 + `MZ` 头 = 内容完好。
 > 这样不会因为本地网络问题误报"发布失败"。
 
+### 1.7 REST API 推送二进制：必须走 blobs，不能塞进 trees
+
+**症状**：`POST /git/trees` 返回 200，远端文件确实在，但**图片是坏的**。
+
+**根因**：往 trees 里塞 `{content: <base64>, encoding: 'base64'}`，
+GitHub **不会解码**，而是把那串 base64 当成正文存下来。
+实测 `resources/brand/wmark-logo.png`：本地 47667 B、以 `89 50 4e 47` 开头；
+远端 63556 B、以 ASCII `iVBORw0K` 开头。
+
+**为什么特别危险**：它**不报错**。而且我们技能脚本对读图失败是刻意容错的
+（退化成"只打文字水印"），所以连异常都看不到 —— 只有肉眼看论文/图表
+才发现 logo 没了。文本文件不受影响（走 `content` 明文，实测 17 个文件逐字节一致）。
+
+**正确做法**：二进制先 `POST /git/blobs`（`encoding: 'base64'` 在这里才生效）
+拿 sha，再在 trees 里用 `{sha}` 引用。`scripts/gh-push.mjs` 已按此修好。
+
+**推完必须逐文件比对**：拿远端 tree 的 blob sha 与本地
+`git hash-object <文件>` 对，才能发现这类"返回 200 但内容坏了"的问题。
+顺带还能抓住 `core.quotepath` 转义生成的假文件（名字里带 `\` 或八进制）。
+
+### 1.8 本机 `node` 是 Electron 包装的
+
+`fs` 被打了补丁，凡路径以 `.asar` 结尾都按归档处理 —— 想读 asar 里的文件，
+用 `require('@electron/asar').extractFile(...)`（见 `verify-package.js`），
+别直接 `fs.readFileSync`。另外本机默认设了 `ELECTRON_RUN_AS_NODE=1`（见 §1.1）。
+
 ---
 
 ## 二、日常开发

@@ -104,18 +104,35 @@ console.log(`暂存文件: ${files.length} 个`);
 
 const tree = [];
 let totalBytes = 0;
+let binCount = 0;
 for (const rel of files) {
   const buf = fs.readFileSync(path.join(ROOT, rel));
   totalBytes += buf.length;
   const isText = !/\.(png|jpg|jpeg|gif|ico|pdf|zip|exe|dll|woff2?|ttf|pyc)$/i.test(rel);
-  tree.push({
-    path: rel.replace(/\\/g, '/'),
-    mode: '100644',
-    type: 'blob',
-    ...(isText ? { content: buf.toString('utf8') } : { content: buf.toString('base64'), encoding: 'base64' }),
+  if (isText) {
+    tree.push({ path: rel.replace(/\\/g, '/'), mode: '100644', type: 'blob', content: buf.toString('utf8') });
+    continue;
+  }
+  /*
+   * ⚠️ 二进制**必须**先 POST /git/blobs 拿 sha，再在 trees 里按 sha 引用。
+   * 旧写法是往 trees 里塞 `{content: base64, encoding:'base64'}` ——
+   * GitHub 不按 base64 解码，而是**把 base64 字符串当正文存下来**，
+   * 于是远端的 .png 变成一坨 ASCII（实测 wmark-logo.png：
+   * 本地 47667 B 以 89 50 4e 47 开头，远端 63556 B 以 "iVBORw0K" 开头）。
+   * 最坏的是它**不会报错**：trees 返回 200，只有产出里的图是坏的；
+   * 而 Python 侧 imread 失败会按设计静默退化成"只打文字"，
+   * 所以连报错都看不到，只有肉眼看论文/图表才发现 logo 不见了。
+   * 推完务必逐文件比对 blob sha（见本仓库 _scratch/verify-remote.js 的思路）。
+   */
+  const blob = await gh(`/repos/${REPO}/git/blobs`, {
+    method: 'POST',
+    body: JSON.stringify({ content: buf.toString('base64'), encoding: 'base64' }),
   });
+  tree.push({ path: rel.replace(/\\/g, '/'), mode: '100644', type: 'blob', sha: blob.sha });
+  binCount += 1;
+  console.log(`  blob ${rel} → ${blob.sha.slice(0, 8)}`);
 }
-console.log(`总大小: ${(totalBytes / 1024 / 1024).toFixed(1)} MB`);
+console.log(`总大小: ${(totalBytes / 1024 / 1024).toFixed(1)} MB（其中二进制 ${binCount} 个走 blobs API）`);
 
 /* ---------- 定位远端状态 ---------- */
 const refGet = `/repos/${REPO}/git/ref/heads/${BRANCH}`;
