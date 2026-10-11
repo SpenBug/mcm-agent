@@ -56,17 +56,17 @@
 
 ## 下载安装
 
-**最新版：v1.2.0** —— [全部发布版本](https://github.com/SpenBug/mcm-agent/releases/latest)
+**最新版：v1.3.0** —— [全部发布版本](https://github.com/SpenBug/mcm-agent/releases/latest)
 
 | 下载 | 说明 |
 |---|---|
-| [**安装版**（推荐）](https://github.com/SpenBug/mcm-agent/releases/download/v1.2.0/ayigu-mcm-agent-setup-1.2.0.exe) | 装到系统，有开始菜单与桌面快捷方式 |
-| [便携版](https://github.com/SpenBug/mcm-agent/releases/download/v1.2.0/ayigu-mcm-agent-portable-1.2.0.exe) | 免安装，双击即用，可放 U 盘 |
+| [**安装版**（推荐）](https://github.com/SpenBug/mcm-agent/releases/download/v1.3.0/ayigu-mcm-agent-setup-1.3.0.exe) | 装到系统，有开始菜单与桌面快捷方式 |
+| [便携版](https://github.com/SpenBug/mcm-agent/releases/download/v1.3.0/ayigu-mcm-agent-portable-1.3.0.exe) | 免安装，双击即用，可放 U 盘 |
 
 > 上面的直链带版本号，**每次发版都会变**。懒得看版本就直接进
 > [Releases 页面](https://github.com/SpenBug/mcm-agent/releases/latest) 拿最新那个。
 
-两个包功能完全相同。**Windows 10/11 x64**，打开即免费体验 2 小时（全功能，产出带体验水印）。
+两个包功能完全相同。**Windows 10/11 x64**，打开即免费体验 1 天（全功能，产出带体验水印）。
 
 > ⚠️ 本版 exe **未做代码签名**，Windows SmartScreen 可能提示「未知发布者」，
 > 点「更多信息 → 仍要运行」即可。
@@ -116,7 +116,7 @@
 > 华数杯与华数杯国际赛赛氪赛题发布。
 > 状态（报名中/进行中/已结束/待公布）与倒计时由程序按当前时间推导，不是写死的。
 
-**免费体验 2 小时**，所有赛事都能试。激活后按所购赛事解锁 —— 买了国赛卡就只在国赛模式下可用；全能包解锁全部。
+**免费体验 1 天**，所有赛事都能试。激活后按所购赛事解锁 —— 买了国赛卡就只在国赛模式下可用；全能包解锁全部。
 **旧卡兼容**：早期签发的卡没有赛事字段，一律按全能包处理。
 
 ---
@@ -311,7 +311,7 @@ flowchart TB
 npm install
 npm start              # 启动（无 GPU 环境用 npm run start:nogpu）
 
-npm test               # 聚合离线测试（26 套，不需要图形界面）
+npm test               # 聚合离线测试（27 套，不需要图形界面）
 npm run smoke          # 端到端：UI + IPC + 真实 Python/draw.io 导出
 ```
 
@@ -321,6 +321,7 @@ npm run smoke          # 端到端：UI + IPC + 真实 Python/draw.io 导出
 | （`path-resolve-test`） | `read_file` 四种路径写法 + 三类越界必须被拒 |
 | `test:loop` | Agent 循环、工具回灌、中断后历史合法性 |
 | `test:license` | 机器指纹、Ed25519 验签、过期宽限、体验版、**删 license.json 不重置** |
+| （`check-trial-duration`） | 改了体验时长后各处口径一致：文档、界面不许写死、vendor 同步、水印资源齐备 |
 | `test:competitions` | 赛事状态推导、倒计时、默认赛事、解锁判断、邀请码派生 |
 | `test:ai-declare` | 声明措辞、**未填项留占位符不编造**、详情四项 |
 | `test:snapshot` | 工作区快照与回滚 |
@@ -334,8 +335,10 @@ npm run smoke          # 端到端：UI + IPC + 真实 Python/draw.io 导出
 | （`keygen-ledger-test`） | 卡号不重复（否则邀请码撞车）、CSV 往返契约 |
 
 > 表里带括号的是 `npm test` 会跑、但没有单独 `test:` 别名的套件。
-> `npm test` 还有一道**反向守卫**：`scripts/*-test.js` 若没挂进聚合入口就直接失败 ——
-> 本轮真实发生过两次"测试写了但忘了挂"，于是它再也不执行，"全绿"其实少了一整套断言。
+> `npm test` 还有一道**反向守卫**：`scripts/*-test.js` **与 `scripts/check-*.js`**
+> 若没挂进聚合入口就直接失败 —— 本轮真实发生过两次"测试写了但忘了挂"，
+> 于是它再也不执行，"全绿"其实少了一整套断言；也发生过反方向的事故：
+> CSS 注释里承诺了一条**还不存在**的守卫，所以范围特意扩到 `check-*.js` 双向夹住。
 
 冒烟（`npm run smoke`）另外覆盖真实运行时：IPC 12 项、赛事面板 10 项、
 品牌与邀请码 12 项、**会话框内容 14 项**（`@{` 弹面板→插入→chip→删除、
@@ -364,7 +367,7 @@ npm run verify:icon    # 从 exe 里反查内嵌图标是不是当前品牌图�
 **架构**：客户端只内嵌**公钥**（只能验签、不能伪造），私钥永远在你手里。
 
 ```
-用户装 exe → 2 小时体验 → 到期弹激活页显示【机器码】
+用户装 exe → 1 天体验 → 到期弹激活页显示【机器码】
    ↓ 用户加微信发机器码
 你签发：node tools/issue.js new --machine <机器码> --competition cumcm --days 365
    ↓ 把卡密发回

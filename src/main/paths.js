@@ -194,7 +194,7 @@ function shouldMigrate({ current, legacy, probe = defaultProbe }) {
  * 导致迁移永久失效，老用户的 license.json 与 python-env 一直躺在旧目录里。
  *
  * 也不能只看凭证：那样**体验期老用户**会被漏掉 —— 新目录的 machine.json 没有锚点，
- * 等于白送一次 2 小时试用，而且旧目录几百 MB 的 python-env 成了孤儿。
+ * 等于白送一次完整体验期，而且旧目录几百 MB 的 python-env 成了孤儿。
  *
  * 不复制文件：python-env 太大，复制既慢又可能中途失败留下半套环境。
  */

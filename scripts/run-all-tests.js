@@ -39,6 +39,7 @@ const SUITES = [
   ['SOP 文档事实核对', 'scripts/check-sop-facts.js'],
   ['文档图表与换行符', 'scripts/check-doc-diagrams.js'],
   ['首屏空态动效', 'scripts/check-empty-state-motion.js'],
+  ['体验期时长口径', 'scripts/check-trial-duration.js'],
   ['签发器赛事选项与定价同源', 'scripts/sync-keygen-options.js', ['--check']],
   ['签发器应用 vendor 同源', 'scripts/sync-issuer-app.js', ['--check']],
   ['签发器与客户端密钥/定价一致', 'scripts/issuer-consistency-test.js'],

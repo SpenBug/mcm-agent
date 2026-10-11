@@ -38,14 +38,23 @@ MCowBQYDK2VwAyEAwI2vcYAMUpemxNUHfNOsssHDMfSFjEcwDnbSDklhCcU=
 -----END PUBLIC KEY-----`;
 
 /**
- * 体验版时长：2 小时。
+ * 体验版时长：**1 天（24 小时）**。
  *
- * 为什么这么短：数模竞赛是「试一下就知道值不值」的场景，
- * 2 小时够跑通一两个步骤、看到真实产出，但跑不完一个完整任务。
- * 改这个值只影响新用户 —— 已经在计时的用户，firstRunAt 已经写进
- * license.json 了，改常量不会让他们重置。
+ * 为什么从 2 小时改成 1 天：数模赛题动辄跑一整天，2 小时连「提交材料 →
+ * 建模 → 出第一张图」这条链都走不完，用户还没看到完整产出就被挡住，
+ * 体验反而变成劝退。给满一天，够认真试一道题的一半。
+ * 反正体验版的所有产出都带水印（论文斜排水印 + 图表角标），
+ * 拿去做不了提交件，不需要靠缩时长来防白嫖。
+ *
+ * ⚠️ 改这个值只影响**新用户** —— 已经在计时的用户 firstRunAt 已写进
+ * machine.json，改常量不会让他们重置，也不会让他们续命。
+ *
+ * ⚠️ 时长变了要同步的地方：formatRemaining 的天数显示、界面文案、
+ * README / 用户指南 / 卖家手册、license-test 的断言。
+ * 漏改不会报错，只会让文档开始说假话 —— 所以有
+ * scripts/check-trial-duration.js 盯着这几处。
  */
-const TRIAL_MS = 2 * 60 * 60 * 1000;
+const TRIAL_MS = 24 * 60 * 60 * 1000;
 
 /** 离线宽限期：授权凭证过期后还能用多久（给用户留出联网复验的余地） */
 const OFFLINE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -242,7 +251,7 @@ function writeState(userData, patch) {
 // 三·B、试用锚点 —— 绑机器码，存 machine.json（删 license.json 不再重置）
 // ===========================================================================
 //
-// 以前锚点只在 license.json：删掉这个文件 = 全新 2 小时，试用可无限续。
+// 以前锚点只在 license.json：删掉这个文件 = 体验期整个重置，试用可无限续。
 // 现在锚点主存 machine.json 并绑定机器码（trialMachine）：
 //   - 删 license.json   → 不重置（machine.json 里还有）
 //   - 拷到别的机器      → 机器码对不上 → 按新机器处理
@@ -347,11 +356,15 @@ function touchTrial(userData, { now = Date.now(), autoStart = true } = {}) {
   return { started: true, firstRunAt: anchor.firstRunAt, remainingMs, expired: remainingMs <= 0 };
 }
 
-/** 格式化成「还剩 5 小时 12 分」 */
+/** 格式化成「还剩 1 天 5 小时」/「还剩 5 小时 12 分」/「还剩 45 分」 */
 function formatRemaining(ms) {
   if (ms <= 0) return '已到期';
-  const h = Math.floor(ms / 3600000);
+  const d = Math.floor(ms / 86400000);
+  const h = Math.floor((ms % 86400000) / 3600000);
   const m = Math.floor((ms % 3600000) / 60000);
+  // 体验期改成 1 天后，开头就是 24 小时整 —— 只按小时显示会变成
+  // 「还剩 24 小时 0 分」这种别扭写法，所以补一天单位。
+  if (d > 0) return `还剩 ${d} 天 ${h} 小时`;
   if (h > 0) return `还剩 ${h} 小时 ${m} 分`;
   if (m > 0) return `还剩 ${m} 分`;
   return '不到 1 分钟';

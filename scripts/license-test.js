@@ -86,7 +86,7 @@ check('超过宽限期被拒', L.verifyCredential(wayExpired, REAL_MACHINE).ok =
 
 // ---------- ③ 体验版 ----------
 console.log();
-console.log('=== ③ 体验版（半天）===');
+console.log('=== ③ 体验版（1 天）===');
 const T2 = path.join(os.tmpdir(), 'lic-trial-' + Date.now());
 fs.mkdirSync(T2, { recursive: true });
 fs.writeFileSync(path.join(T2, 'machine.json'), JSON.stringify({ code: REAL_MACHINE, parts: 3, degraded: false }));
@@ -94,25 +94,31 @@ fs.writeFileSync(path.join(T2, 'machine.json'), JSON.stringify({ code: REAL_MACH
 const t0 = now;
 const a = L.touchTrial(T2, { now: t0 });
 check('首次启动自动开始计时', a.started === true && a.remainingMs === L.TRIAL_MS);
-check('TRIAL_MS 是 2 小时', L.TRIAL_MS === 2 * 3600 * 1000, String(L.TRIAL_MS / 3600000) + ' 小时');
+// 硬断言：锁住 24 小时。下面的偏移都从 TRIAL_MS 推导，
+// 若只留推导式断言，改常量后会全部继续变绿 —— 那就等于没测到时长本身。
+check('TRIAL_MS 是 24 小时（1 天）', L.TRIAL_MS === 24 * 3600 * 1000, String(L.TRIAL_MS / 3600000) + ' 小时');
 
-const b = L.touchTrial(T2, { now: t0 + 30 * 60 * 1000 });   // 半小时后
-check('半小时后剩 1.5 小时', Math.round(b.remainingMs / 60000) === 90, Math.round(b.remainingMs / 60000) + ' 分');
+// 用「比总时长少半小时」这个点，既验倒计时正确，又不依赖具体是 2h 还是 24h
+const halfLeftMs = L.TRIAL_MS - 30 * 60 * 1000;
+const b = L.touchTrial(T2, { now: t0 + halfLeftMs });
+check('用掉「总时长-30分」后剩 30 分', Math.round(b.remainingMs / 60000) === 30, Math.round(b.remainingMs / 60000) + ' 分');
 
 // ⚠️ 锚点主存在 machine.json：删掉 license.json（旧的重置漏洞）不能续命
 fs.rmSync(path.join(T2, 'license.json'), { force: true });
-const b2 = L.touchTrial(T2, { now: t0 + 30 * 60 * 1000 });
-check('删 license.json 不重置试用', b2.started === true && Math.round(b2.remainingMs / 60000) === 90,
+const b2 = L.touchTrial(T2, { now: t0 + halfLeftMs });
+check('删 license.json 不重置试用', b2.started === true && Math.round(b2.remainingMs / 60000) === 30,
   `剩 ${Math.round(b2.remainingMs / 60000)} 分`);
 
 // ⚠️ 关键：把系统时间调回去，剩余时间不能变多
 const c = L.touchTrial(T2, { now: t0 });                  // 时间倒退回起点
 check('系统时间调回去不能续命', c.remainingMs <= b.remainingMs, `${Math.round(c.remainingMs / 60000)}分 vs ${Math.round(b.remainingMs / 60000)}分`);
 
-// 把时间调大 → 加速到期
-const d = L.touchTrial(T2, { now: t0 + 3 * 3600 * 1000 });
-check('时间调到 3 小时后已到期', d.expired === true && d.remainingMs === 0);
+// 把时间调到超过总时长 → 必须到期（推导式：改成 24h 后自动跟着变）
+const d = L.touchTrial(T2, { now: t0 + L.TRIAL_MS + 60 * 60 * 1000 });
+check('时间调过试用期后已到期', d.expired === true && d.remainingMs === 0, `剩 ${Math.round(d.remainingMs / 60000)} 分`);
 
+// 24 小时制新增的「天」单位必须被测到，否则 formatRemaining 的回退分支无人看守
+check('格式化：天', L.formatRemaining(24 * 3600000 + 5 * 3600000) === '还剩 1 天 5 小时', L.formatRemaining(24 * 3600000 + 5 * 3600000));
 check('格式化：小时', L.formatRemaining(1 * 3600000 + 12 * 60000) === '还剩 1 小时 12 分', L.formatRemaining(1 * 3600000 + 12 * 60000));
 check('格式化：分钟', L.formatRemaining(45 * 60000) === '还剩 45 分');
 check('格式化：到期', L.formatRemaining(0) === '已到期');

@@ -1742,7 +1742,10 @@
       $('lockSub').textContent = `卡密 ${state.card || ''} 已过有效期。续期或购买新卡后即可继续使用。`;
     } else {
       $('lockTitle').textContent = '体验已结束';
-      $('lockSub').textContent = '2 小时体验时间已用完。激活后即可继续使用。';
+      // 这里刻意**不写具体时长**：时长只在 license.js 的 TRIAL_MS 有一份真源。
+      // 写死「2 小时」这类文案，改时长时就会有一句假话留在界面上，
+      // 而且漏改不报错 —— check-trial-duration.js 会盯住这条不许复发。
+      $('lockSub').textContent = '免费体验时间已用完。激活后即可继续使用。';
     }
     // 机器码
     try {

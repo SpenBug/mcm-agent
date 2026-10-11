@@ -4,7 +4,7 @@
 > 文中的命令与数字都来自实际运行（不是凭记忆写的），改动后请重新核对。
 >
 > - 项目：`mcm-agent`（Electron 桌面应用，Windows 10+ x64）
-> - 文档基准：v1.2.0 / 26 套离线测试
+> - 文档基准：v1.3.0 / 27 套离线测试
 > - 最后更新：2026-10-10
 >
 > （这里刻意**不写**提交数、跟踪文件数 —— 它们是 git 状态的自指：
@@ -41,6 +41,7 @@
 | 标题截断规则 | 2 份（渲染层 / 主进程） | `src/main/agent/session-title.js` |
 | 包内资源清单 | 手写文件名列表 | 从 `index.html` 反查 |
 | 版本号 | README 手改 | `package.json` + 一致性校验 |
+| 体验期时长 | 界面文案 / 激活页 / README / 用户指南 / 卖家手册 / vendor 各抄一份 | `license.js` 的 `TRIAL_MS`（界面**不写时长**，改走 `formatRemaining`） |
 
 配套手段：**能生成的就别手写**，生成不了的就加 `--check` 守卫（见第四节）。
 
@@ -172,7 +173,7 @@ npm start              # 启动（无 GPU 环境用 npm run start:nogpu）
 **改完代码后的自检顺序**（从快到慢）：
 
 ```powershell
-npm test                    # 26 套离线测试，秒级，不需要图形界面
+npm test                    # 27 套离线测试，秒级，不需要图形界面
 npm run smoke               # 开发态端到端（UI + IPC + 真实导出），约 3 分钟
 npm run selftest:runtimes   # 技能脚本两条执行路径（需真实 Electron）
 ```
@@ -258,8 +259,8 @@ npm run smoke:packaged   # ★ 对打包出的 exe 跑冒烟（约 5 分钟）
 ```powershell
 curl.exe -X POST -H "Authorization: Bearer $TOKEN" `
   -H "Content-Type: application/octet-stream" `
-  --data-binary "@dist/阿一古数模 Setup 1.2.0.exe" `
-  "https://uploads.github.com/repos/<owner>/<repo>/releases/<id>/assets?name=ayigu-mcm-agent-setup-1.2.0.exe"
+  --data-binary "@dist/阿一古数模 Setup 1.3.0.exe" `
+  "https://uploads.github.com/repos/<owner>/<repo>/releases/<id>/assets?name=ayigu-mcm-agent-setup-1.3.0.exe"
 ```
 
 ### 步骤 7 · 验证下载链接
@@ -299,6 +300,7 @@ git rev-parse HEAD   # 两者必须一致
 | `check-version-consistency.js` | README 下载链接版本与 package.json 不一致 |
 | `check-doc-diagrams.js` | Mermaid 裸尖括号（整块图渲染失败）、CRLF 让校验静默失配、图片引用不存在、**全文锚点失效**（首屏导航是目录之外的第二处手抄，重编号时曾漏 4 个） |
 | `check-empty-state-motion.js` | 首屏动效四类炸点：关键帧动了会重排的属性、漏 `prefers-reduced-motion` 降级、**动画终值 ≠ 静态样式**（`fill:both` 会永久压住静态声明，宣传截图取的就是这个终态）、CSS 动画撞上 SVG `transform=` 呈现属性（覆盖而非叠加，机器人举的图会甩飞）。自带 `--self-test` 反向验证 |
+| `check-trial-duration.js` | 改了 `TRIAL_MS` 但某处文案没说谎也没报错、只是从此变成假话：文档时长口径、**界面不许写死时长**（必须走 `formatRemaining`，或压根不写）、签发器 vendor 同步、注释承诺的守卫存在且真挂进 `npm test`、体验版水印资源与引用齐备（logo 存在且为有效 PNG / `brand` 进 extraResources / 两入口 WMARK_LOGO 同名 / 水印文案无旧品牌）。自带 `--self-test` 反向验证。⚠️ 运行时段判据**不含单字「试」** —— 实测误伤过「加大超时再试（10 分钟）」那种**代码超时**文案 |
 | `check-sop-facts.js` | SOP/README 里的命令、文件、数字与现实不符（刻意不校验提交数/文件数 —— 自指事实必然腐烂） |
 | `sync-keygen-options.js --check` | 签发器赛事选项与定价漂移（曾漏 3 个赛事、亚太赛还是旧价） |
 | `sync-issuer-app.js --check` | 独立签发器应用的 vendor 副本与真源漂移（改了定价/公钥/核心逻辑忘了同步 → 应用按旧价卖卡）。同时硬拦 **vendor 里出现私钥或台账** —— 应用会被分发/拷贝，带了这些等于把发卡权送人 |
