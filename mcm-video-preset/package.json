@@ -1,0 +1,12 @@
+{
+  "name": "@local/dsh-mcm-video-preset",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "数模视频生产线预设：把用户级 mcm-video-pipeline 技能（13 步 + 11 套模板 + 强制确认门）封装为 agent 预设 mcm-video。",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

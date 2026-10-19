@@ -25,3 +25,6 @@ keys/
 # 销售记录（含买家信息）与邀请台账，绝不入库
 tools/issued.csv
 tools/invites.csv
+
+# iDesign 默认模板残留（Untitled Design 脚手架，非本项目内容）
+design/

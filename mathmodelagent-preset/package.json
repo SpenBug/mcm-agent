@@ -1,0 +1,12 @@
+{
+  "name": "@local/dsh-mathmodelagent-preset",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "MathModelAgent 预设：把用户级 mathmodelagent-suite 技能（赛题分析→建模→编程出图→非数据图→论文→验收 六阶段流水线）封装为 agent 预设 mathmodelagent。",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

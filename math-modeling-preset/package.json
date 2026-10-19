@@ -1,0 +1,12 @@
+{
+  "name": "@local/dsh-math-modeling-preset",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "数学建模预设：把用户级 math-modeling 技能（建模手→编程手→论文手三角色流水线 + Subagent 独立质检门禁）封装为 agent 预设 math-modeling。",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}
