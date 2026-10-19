@@ -5,39 +5,95 @@
 'use strict';
 
 /**
- * 赛事日历 —— 内置官方准确时间 + 状态推导 + 价目表。
+ * 赛事数据 + 时长档位价目表。
  *
- * 设计要点：
+ * ⚠️ 2026-10 起，授权口径从「按赛事解锁」改为「按时长解锁」：
+ *   卡密只带 plan（week / month / year / forever）与 expireAt，
+ *   **不再带 competition 字段**。赛事数据现在只服务两件事 ——
+ *   ① 系统提示词里的「当前赛事」成稿口径与 AI 声明措辞；
+ *   ② 比赛时间的展示（若将来重新做日历）。
+ *   它与授权、与价格**已经解耦**，改赛事时间不影响任何一张已售出的卡。
  *
- * 1. **状态不写死**：报名中 / 进行中 / 已结束 / 待公布，全部由
- *    startAt / endAt / regDeadline 与当前时间实时推导，倒计时同理。
- *    时间统一存 UTC 毫秒（Date.parse('...+08:00')），显示用本地时区。
- *
- * 2. **数据是快照不是服务**：改期就改这个文件重新打包（YAGNI，
- *    不为日历引入联网更新与服务端）。
- *
- * 3. **时间来源（2026-10-08 联网核实）**：
- *    - 国赛：mcm.edu.cn 首页 —— 2026-09-10 18:00 发布赛题，云南赛区通知
- *      载明 09-10 18:00 → 09-13 20:00
- *    - 华为杯：研究生数学建模竞赛开赛公告（2026-09-16）——
- *      09-23 08:00 → 09-27 12:00
- *    - 亚太赛：APMCM 中文赛项题目发布 —— 06-12 18:00 → 06-15 20:00
- *    - 数维杯：nmmcm.org.cn《关于大赛》—— 报名截止 11-20 06:00，
- *      11-20 09:00 → 11-24 09:00，论文 11-24 10:00 截止
- *    - MathorCup 数学建模：mathorcup.org —— 04-17 08:00 → 04-21 09:00
- *    - MathorCup 大数据：报名通知（2026-08-20）—— 报名截止 10-23 12:00，
- *      初赛 10-23 18:00 → 10-30 20:00（7 天），复赛 12-04 18:00 → 12-11 20:00
- *    - 华数杯：赛氪赛题发布 —— 08-07 18:00 → 08-10 20:00
- *    - 华数杯国际：赛氪赛题发布 —— 2026-01-17 06:00 → 01-21 09:00
- *    - 美赛 2027：官方未公布 → tba
- *
- * 4. **价目表是用户确认过的商业决策**，不要随手改：
- *    国赛 69 / 华为杯 79 / 美赛 79 / 全能包 168；
- *    数维杯·亚太·大数据·华数杯·华数杯国际 统一 **39**（四天以上大型赛事）；
- *    MathorCup 数学建模与其他小赛 29。
+ * 时间来源（2026-10-08 联网核实）：
+ *   - 国赛：mcm.edu.cn 首页 —— 2026-09-10 18:00 发布赛题，云南赛区通知
+ *     载明 09-10 18:00 → 09-13 20:00
+ *   - 华为杯：研究生数学建模竞赛开赛公告（2026-09-16）——
+ *     09-23 08:00 → 09-27 12:00
+ *   - 亚太赛：APMCM 中文赛项题目发布 —— 06-12 18:00 → 06-15 20:00
+ *   - 数维杯：nmmcm.org.cn《关于大赛》—— 报名截止 11-20 06:00，
+ *     11-20 09:00 → 11-24 09:00，论文 11-24 10:00 截止
+ *   - MathorCup 数学建模：mathorcup.org —— 04-17 08:00 → 04-21 09:00
+ *   - MathorCup 大数据：报名通知（2026-08-20）—— 报名截止 10-23 12:00，
+ *     初赛 10-23 18:00 → 10-30 20:00（7 天），复赛 12-04 18:00 → 12-11 20:00
+ *   - 华数杯：赛氪赛题发布 —— 08-07 18:00 → 08-10 20:00
+ *   - 华数杯国际：赛氪赛题发布 —— 2026-01-17 06:00 → 01-21 09:00
+ *   - 美赛 2027：官方未公布 → tba
  */
 
 const HOUR = 3600 * 1000;
+
+// ===========================================================================
+// 时长档位（授权与定价的唯一真源）
+// ===========================================================================
+//
+// 为什么改成时长制：按赛事解锁有两个绕不开的麻烦 ——
+//   ① 用户买了国赛卡，想顺手做一道华为杯题就被拦住，体验上像"坏了"；
+//   ② 赛事日历一改（加新赛事、改时间），门禁判断就得跟着改，
+//      而时间是会漂移的，授权逻辑不该依赖它。
+// 时长制下「买了就能用所有功能」，到期自然续费，两边都简单。
+//
+// ⚠️ days 是**签发时**写进凭证的 expireAt 的依据，改它只影响新签的卡，
+//    已售出的卡以自己 payload 里的 expireAt 为准，不会失效。
+//
+// 永久买断（forever）没有 days，expireAt 用 PERPETUAL_MS 哨兵值 ——
+// 一个足够远的真实时间戳（2099-01-01）。为什么不加 perpetual 布尔位让
+// verifyCredential 跳过过期判断：那要改验签逻辑，而验签是整条授权链的
+// 地基，为一种档位去动它不值得。哨兵值走完全相同的代码路径，
+// 且 payload 里另有 perpetual: true 供界面显示「永久」。
+
+/** 永久买断的 expireAt 哨兵：2099-01-01 UTC。足够远，且是合法 JSON 数字 */
+const PERPETUAL_MS = Date.UTC(2099, 0, 1);
+
+/** 档位表（元，人民币）—— 商业决策，改前三思 */
+const PLANS = {
+  week:    { label: '周卡',   days: 7,   price: 29 },
+  month:   { label: '月卡',   days: 30,  price: 59 },
+  year:    { label: '年卡',   days: 365, price: 99 },
+  forever: { label: '永久买断', days: null, price: 199, perpetual: true },
+};
+
+/** 档位 → 展示用时长文案（永久卡没有天数） */
+function planDaysText(id) {
+  const p = PLANS[id];
+  if (!p) return '';
+  return p.perpetual ? '永久' : `${p.days} 天`;
+}
+
+/** 把档位 id 归一化；不合法就抛错（调用方转成用户可见文案） */
+function normalizePlan(s) {
+  const id = String(s == null ? '' : s).toLowerCase();
+  if (!PLANS[id]) {
+    throw new Error(`--plan 应为：${Object.keys(PLANS).join(' / ')}（收到 "${s}"）`);
+  }
+  return id;
+}
+
+/** 老卡（只有 competition、没有 plan）→ 按时长制兼容成年卡 */
+function planOf(payload) {
+  const p = String((payload && payload.plan) || '').toLowerCase();
+  if (PLANS[p]) return p;
+  return 'year';
+}
+
+/** 这个档位是不是永久买断（界面据此显示「永久」而不是日期） */
+function isPerpetual(payload) {
+  const p = planOf(payload);
+  return !!PLANS[p].perpetual;
+}
+
+// ===========================================================================
+// 赛事数据（只服务提示词与展示，**不参与授权**）
+// ===========================================================================
 
 /** 解析中国时间（+08:00）为 UTC 毫秒；解析失败返回 null */
 function cn(iso) {
@@ -45,29 +101,11 @@ function cn(iso) {
   return Number.isFinite(t) ? t : null;
 }
 
-/** 价目表（元，人民币）—— 商业决策，勿改 */
-const PRICES = {
-  cumcm: 69,
-  huawei: 79,
-  mcm: 79,
-  // ¥39 档：四天以上的大型赛事（数维杯 / 亚太 / 大数据 / 华数杯 / 华数杯国际）
-  shuwei: 39,
-  apmcm: 39,
-  bigdata: 39,
-  huashu: 39,
-  huashu_intl: 39,
-  // ¥29 档：小赛
-  mathorcup: 29,
-  others: 29,
-  all: 168,
-};
-
 /**
  * 赛事清单。字段：
  *   id           稳定标识（也是凭证 competition 字段的取值）
  *   name         短名（面板显示）
  *   fullName     全称（详情/文档）
- *   price        解锁价（元）
  *   startAt      开赛 UTC 毫秒；null = 官方未公布
  *   endAt        结束 UTC 毫秒
  *   regDeadline  报名截止 UTC 毫秒（可空）
@@ -83,7 +121,6 @@ const COMPETITIONS = [
     id: 'shuwei',
     name: '数维杯秋季赛',
     fullName: '2026 年第十二届数维杯全国大学生数学建模挑战赛（秋季赛）',
-    price: PRICES.shuwei,
     startAt: cn('2026-11-20T09:00:00+08:00'),
     endAt: cn('2026-11-24T09:00:00+08:00'),
     regDeadline: cn('2026-11-20T06:00:00+08:00'),
@@ -98,7 +135,6 @@ const COMPETITIONS = [
     id: 'cumcm',
     name: '国赛 CUMCM',
     fullName: '高教社杯全国大学生数学建模竞赛',
-    price: PRICES.cumcm,
     startAt: cn('2026-09-10T18:00:00+08:00'),
     endAt: cn('2026-09-13T20:00:00+08:00'),
     regDeadline: null,
@@ -113,7 +149,6 @@ const COMPETITIONS = [
     id: 'huawei',
     name: '华为杯研究生赛',
     fullName: '中国研究生数学建模竞赛（华为杯，第 23 届）',
-    price: PRICES.huawei,
     startAt: cn('2026-09-23T08:00:00+08:00'),
     endAt: cn('2026-09-27T12:00:00+08:00'),
     regDeadline: cn('2026-09-19T17:00:00+08:00'),
@@ -127,7 +162,6 @@ const COMPETITIONS = [
     id: 'mcm',
     name: '美赛 MCM/ICM',
     fullName: 'COMAP Mathematical Contest in Modeling / ICM',
-    price: PRICES.mcm,
     startAt: null,   // 2027 届官方未公布
     endAt: null,
     regDeadline: null,
@@ -140,7 +174,6 @@ const COMPETITIONS = [
     id: 'apmcm',
     name: '亚太赛 APMCM',
     fullName: '亚太地区大学生数学建模竞赛（中文赛项）',
-    price: PRICES.apmcm,
     startAt: cn('2026-06-12T18:00:00+08:00'),
     endAt: cn('2026-06-15T20:00:00+08:00'),
     regDeadline: null,
@@ -154,7 +187,6 @@ const COMPETITIONS = [
     id: 'bigdata',
     name: 'MathorCup 大数据赛',
     fullName: 'MathorCup 数学应用挑战赛 — 大数据竞赛（第七届）',
-    price: PRICES.bigdata,
     startAt: cn('2026-10-23T18:00:00+08:00'),
     endAt: cn('2026-10-30T20:00:00+08:00'),
     regDeadline: cn('2026-10-23T12:00:00+08:00'),
@@ -169,7 +201,6 @@ const COMPETITIONS = [
     id: 'huashu',
     name: '华数杯',
     fullName: '华数杯大学生数学建模竞赛（第七届）',
-    price: PRICES.huashu,
     startAt: cn('2026-08-07T18:00:00+08:00'),
     endAt: cn('2026-08-10T20:00:00+08:00'),
     regDeadline: null,
@@ -183,7 +214,6 @@ const COMPETITIONS = [
     id: 'huashu_intl',
     name: '华数杯国际赛',
     fullName: '华数杯国际大学生数学建模竞赛（第四届）',
-    price: PRICES.huashu_intl,
     startAt: cn('2026-01-17T06:00:00+08:00'),
     endAt: cn('2026-01-21T09:00:00+08:00'),
     regDeadline: null,
@@ -197,7 +227,6 @@ const COMPETITIONS = [
     id: 'mathorcup',
     name: 'MathorCup',
     fullName: 'MathorCup 高校数学建模挑战赛',
-    price: PRICES.mathorcup,
     startAt: cn('2026-04-17T08:00:00+08:00'),
     endAt: cn('2026-04-21T09:00:00+08:00'),
     regDeadline: cn('2026-04-16T12:00:00+08:00'),
@@ -210,7 +239,6 @@ const COMPETITIONS = [
     id: 'others',
     name: '其他小赛',
     fullName: '华中杯 / 华数杯 / 五一赛 / 研究生联赛等',
-    price: PRICES.others,
     startAt: null,
     endAt: null,
     regDeadline: null,
@@ -275,12 +303,6 @@ function get(id) {
   return COMPETITIONS.find((c) => c.id === id) || null;
 }
 
-/** 解锁判断：凭证 competition 是否覆盖赛事 id */
-function unlocks(competition, id) {
-  if (!competition || competition === 'all') return true;
-  return competition === id;
-}
-
 // ===========================================================================
 // 邀请码
 // ===========================================================================
@@ -310,7 +332,12 @@ const INVITE_RULES = {
 };
 
 module.exports = {
-  PRICES,
+  PLANS,
+  PERPETUAL_MS,
+  normalizePlan,
+  planDaysText,
+  isPerpetual,
+  planOf,
   COMPETITIONS,
   STATUS_TEXT,
   INVITE_RULES,
@@ -318,7 +345,6 @@ module.exports = {
   list,
   get,
   defaultCurrent,
-  unlocks,
   inviteCodeFromCard,
   HOUR,
 };

@@ -11,7 +11,7 @@
  *     旧的 tools/issuer.js 是"本地 HTTP + token"，那套攻击面在这里直接消失。
  *
  * 签发逻辑一律来自 vendor/issuer-core.js（由 scripts/sync-issuer-app.js
- * 从 tools/issuer-core.js 同步），**本文件不自己算卡号、不自己拼赛事价格**。
+ * 从 tools/issuer-core.js 同步），**本文件不自己算卡号、不自己拼档位价格**。
  */
 
 const { app, BrowserWindow, ipcMain, dialog, shell, clipboard } = require('electron');
@@ -166,11 +166,14 @@ function registerIpc() {
     node: process.versions.node,
   }));
 
-  handle('competitions:list', () => core.comps.COMPETITIONS.map((c) => ({
-    id: c.id, name: c.name, fullName: c.fullName, price: core.comps.PRICES[c.id] ?? c.price,
-  })).concat([{ id: 'all', name: '全能包', fullName: '全能包（全部赛事）', price: core.comps.PRICES.all }]));
+  handle('plans:list', () => Object.keys(core.comps.PLANS).map((k) => ({
+    id: k, name: core.comps.PLANS[k].label, price: core.comps.PLANS[k].price,
+    days: core.comps.PLANS[k].days,
+    perpetual: !!core.comps.PLANS[k].perpetual,
+    daysText: core.comps.planDaysText(k),
+  })));
 
-  handle('prices', () => ({ ...core.comps.PRICES, inviteRules: core.comps.INVITE_RULES }));
+  handle('prices', () => ({ plans: core.comps.PLANS, inviteRules: core.comps.INVITE_RULES }));
 
   handle('ledger:list', () => core.readLedger().map((r) => ({
     ...r,
@@ -181,20 +184,18 @@ function registerIpc() {
   handle('issue:new', (form) => {
     const r = core.issue({
       machine: form.machine,
-      competition: form.competition,
+      plan: form.plan,
       buyer: form.buyer || '',
       note: form.note || '',
-      ...(form.until ? { until: form.until } : { days: Number(form.days || 365) }),
+      ...(form.until ? { until: form.until } : {}),
     });
-    const comp = r.payload.competition === 'all'
-      ? { fullName: '全能包（全部赛事）' }
-      : core.comps.get(r.payload.competition);
     return {
       credential: r.credential,
       card: r.payload.card,
       machinePretty: core.pretty(r.payload.machine),
-      competition: r.payload.competition,
-      competitionName: comp ? (comp.fullName || comp.name) : r.payload.competition,
+      plan: r.payload.plan,
+      planLabel: r.planLabel,
+      perpetual: !!r.perpetual,
       price: r.price,
       inviteCode: r.inviteCode,
       expireText: new Date(r.payload.expireAt).toISOString().slice(0, 10),
@@ -208,7 +209,7 @@ function registerIpc() {
     return {
       ok: v.ok, why: v.why, expired: !!v.expired,
       card: p.card, machine: p.machine ? core.pretty(p.machine) : '',
-      edition: p.edition, competition: p.competition || 'all',
+      edition: p.edition, plan: p.plan || 'year（旧卡）',
       issuedAt: p.issuedAt ? new Date(p.issuedAt).toISOString().slice(0, 10) : '',
       expireAt: p.expireAt ? new Date(p.expireAt).toISOString().slice(0, 10) : '',
       buyer: p.buyer || '',
@@ -220,7 +221,7 @@ function registerIpc() {
     const r = core.recordInvite({
       inviterCode: form.code,
       buyer: form.buyer || '',
-      competition: form.competition || '',
+      competition: form.plan || '',
       amount: form.amount || '',
       note: form.note || '',
     });
@@ -257,7 +258,7 @@ function registerIpc() {
     return {
       canceled: false, file: path.basename(file), dry: !!dry,
       added: res.rows.length, skipped: res.skipped.length, unknown: res.unknown,
-      cards: res.rows.map((r) => ({ card: r.card, competition: r.competition, inviteCode: core.comps.inviteCodeFromCard(r.card) })),
+      cards: res.rows.map((r) => ({ card: r.card, plan: r.plan, inviteCode: core.comps.inviteCodeFromCard(r.card) })),
     };
   });
 
@@ -326,11 +327,14 @@ async function runSelfTest(reportPath) {
     const comps = require(path.join(__dirname, '..', 'vendor', 'competitions'));
     const license = require(path.join(__dirname, '..', 'vendor', 'license'));
 
-    add('vendor/competitions 可加载', Array.isArray(comps.COMPETITIONS) && comps.COMPETITIONS.length > 0,
-      comps.COMPETITIONS.length + ' 个赛事');
+    add('vendor/competitions 可加载', Object.keys(comps.PLANS).length > 0,
+      Object.keys(comps.PLANS).length + ' 个档位');
     add('vendor/license 可加载', typeof license.verifyCredential === 'function');
-    add('赛事价格来自数据源', comps.PRICES.cumcm === 69 && comps.PRICES.all === 168,
-      `cumcm=${comps.PRICES.cumcm} all=${comps.PRICES.all}`);
+    add('档位价格来自数据源', comps.PLANS.year.price === 99 && comps.PLANS.month.price === 59,
+      `year=${comps.PLANS.year.price} month=${comps.PLANS.month.price}`);
+    add('永久买断用 2099 哨兵', comps.PERPETUAL_MS === Date.UTC(2099, 0, 1)
+      && comps.PLANS.forever.perpetual === true,
+      new Date(comps.PERPETUAL_MS).toISOString().slice(0, 10));
 
     /* 私钥：优先用真私钥（能验签），没有就临时造一把（其余断言仍要能跑） */
     const realPriv = path.join(dataDir(), 'license-private.pem');
@@ -347,9 +351,15 @@ async function runSelfTest(reportPath) {
 
     const core = createIssuer({ dataDir: tmpDir, comps, license });
     const M = '7E842A70F9986EB7';
-    const r = core.issue({ machine: M, days: 30, competition: 'cumcm', buyer: 'selftest' });
+    const r = core.issue({ machine: M, plan: 'month', buyer: 'selftest' });
     add('签发成功', /^MCM-\d{4}-\d{4}$/.test(r.payload.card), r.payload.card);
-    add('价格取自数据源', r.price === comps.PRICES.cumcm, String(r.price));
+    add('价格取自数据源', r.price === comps.PLANS.month.price, String(r.price));
+    // 永久买断：expireAt 必须是哨兵值，且 payload 打标
+    const pf = core.issue({ machine: M, plan: 'forever', buyer: 'selftest-perpetual' });
+    add('永久卡到期日是 2099 哨兵', pf.payload.expireAt === comps.PERPETUAL_MS,
+      new Date(pf.payload.expireAt).toISOString().slice(0, 10));
+    add('永久卡 payload 带 perpetual 标', pf.payload.perpetual === true);
+    add('永久卡回显「永久」', pf.expireText === '永久', pf.expireText);
     add('返回邀请码', /^\d{6}$/.test(r.inviteCode), r.inviteCode);
     add('台账已写入', core.readLedger().length === 1, String(core.readLedger().length));
     add('排号有空洞也不撞（0001,0003 → 4）',
@@ -369,10 +379,10 @@ async function runSelfTest(reportPath) {
     add('whoIs 找到推荐人', core.whoIs(r.inviteCode)?.card === r.payload.card);
 
     const parsed = core.parseImportCsv(
-      '卡号,机器码,版本,赛事,签发时间,到期时间,买家,备注\nMCM-2026-0009,7E842A70F9986EB7,pro,华数杯,2026-10-01,2027-10-01,甲,\n',
+      '卡号,机器码,版本,档位,签发时间,到期时间,买家,备注\nMCM-2026-0009,7E842A70F9986EB7,pro,year,2026-10-01,2027-10-01,甲,\n',
       { existingCards: new Set() });
-    add('导入解析（中文表头 + 中文赛事名）', parsed.rows.length === 1 && parsed.rows[0].competition === 'huashu',
-      parsed.rows[0] && parsed.rows[0].competition);
+    add('导入解析（中文表头 + 档位）', parsed.rows.length === 1 && parsed.rows[0].plan === 'year',
+      parsed.rows[0] && parsed.rows[0].plan);
     add('导出中文 CSV', core.ledgerToCsvZh().startsWith('卡号,机器码'));
     add('导出英文 CSV', core.ledgerToCsv().startsWith('card,machine'));
 
@@ -442,8 +452,8 @@ async function runScreenshot(outPath) {
   try {
     await shotWin.webContents.executeJavaScript(`(async () => {
       document.getElementById('machine').value = '7E84-2A70-F998-6EB7';
-      const sel = document.getElementById('competition');
-      sel.value = 'cumcm'; sel.dispatchEvent(new Event('change'));
+      const sel = document.getElementById('plan');
+      sel.value = 'year'; sel.dispatchEvent(new Event('change'));
       document.getElementById('buyer').value = '张三（演示）';
       document.getElementById('go').click();
     })()`);

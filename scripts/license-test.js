@@ -140,11 +140,14 @@ check('  带上卡密号', s2.card === 'MCM-2027-A3F9-8B2E-4C71', String(s2.card
 L.writeState(T3, { credential: sign({ card: 'OTHER', machine: 'OTHERMACHINE00000', expireAt: future }) });
 check('凭证绑的是别的机器 → 不能激活', L.getLicenseState(T3, { now }).mode !== 'activated');
 
-// 赛事绑定（按赛事定价）
-L.writeState(T3, { credential: sign({ card: 'CUMCM-2027-0001', machine: REAL_MACHINE, edition: 'pro', competition: 'cumcm', expireAt: future }) });
-check('新卡返回所绑赛事', L.getLicenseState(T3, { now }).competition === 'cumcm', L.getLicenseState(T3, { now }).competition);
+// 时长档位（按时长授权，与赛事无关）
+L.writeState(T3, { credential: sign({ card: 'MCM-2027-0001', machine: REAL_MACHINE, edition: 'pro', plan: 'month', expireAt: future }) });
+check('新卡返回时长档位', L.getLicenseState(T3, { now }).plan === 'month', L.getLicenseState(T3, { now }).plan);
+check('  并带档位中文名', L.getLicenseState(T3, { now }).planLabel === '月卡', L.getLicenseState(T3, { now }).planLabel);
+check('  不再有赛事字段', L.getLicenseState(T3, { now }).competition === undefined);
 L.writeState(T3, { credential: goodCred });   // 旧卡：payload 里没有 competition
-check('旧卡无 competition → all（兼容已售卡）', L.getLicenseState(T3, { now }).competition === 'all', L.getLicenseState(T3, { now }).competition);
+check('旧卡无 plan → 年卡兼容（已售卡不失效）',
+  L.getLicenseState(T3, { now }).plan === 'year', L.getLicenseState(T3, { now }).plan);
 
 L.writeState(T3, { credential: '' });
 // 锚点在 machine.json（绑机器码）：把锚点拨到已过期

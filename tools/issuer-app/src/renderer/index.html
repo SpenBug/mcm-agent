@@ -170,9 +170,9 @@
       <label>① 用户的机器码</label>
       <input id="machine" type="text" placeholder="7E84-2A70-F998-6EB7（带不带横杠、大小写都行）" autocomplete="off">
 
-      <label>② 解锁赛事（决定这张卡值多少钱）</label>
-      <select id="competition"><option value="" selected disabled>请选择解锁的赛事…</option></select>
-      <div class="hint" id="compHint">必须先选一项。选错赛事买家就用不了他要打的比赛。</div>
+      <label>② 时长档位（决定这张卡值多少钱、能用多久）</label>
+      <select id="plan"><option value="" selected disabled>请选择时长档位…</option></select>
+      <div class="hint" id="compHint">必须先选一项。买了就能用全部功能，不限赛事。</div>
 
       <label>③ 有效期</label>
       <div class="row">
@@ -246,12 +246,12 @@
       </div>
       <div class="row">
         <div>
-          <label>赛事（选填）</label>
-          <input id="invComp" type="text" placeholder="cumcm" autocomplete="off">
+          <label>档位（选填）</label>
+          <input id="invComp" type="text" placeholder="year" autocomplete="off">
         </div>
         <div>
           <label>金额（选填）</label>
-          <input id="invAmount" type="text" placeholder="64" autocomplete="off">
+          <input id="invAmount" type="text" placeholder="199" autocomplete="off">
         </div>
       </div>
       <button class="primary" id="invGo">记 录</button>

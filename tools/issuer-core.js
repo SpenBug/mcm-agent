@@ -13,7 +13,7 @@
  * 见 scripts/issuer-consistency-test.js 的注释。
  *
  * 所以把**数据与算法**全部收在这里，各入口只负责"取输入 / 展示输出"：
- *   · 赛事与价格   → 直接 require src/main/competitions（客户端同一份）
+ *   · 档位与价格   → 直接 require src/main/competitions（客户端同一份）
  *   · 卡号排号     → nextSeq()，max+1（有空洞也不撞号）
  *   · 台账读写     → 表头按列名映射，加列不会错位
  *   · 邀请记账     → 单独一个文件，不混进卡密台账
@@ -29,7 +29,7 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const LEDGER_HEADER = 'card,machine,edition,competition,issuedAt,expireAt,buyer,note';
+const LEDGER_HEADER = 'card,machine,edition,plan,issuedAt,expireAt,buyer,note';
 const INVITE_HEADER = 'inviterCode,buyer,competition,amount,at,note';
 
 /** 按 CSV 规则切一行（支持引号内逗号/换行转义） */
@@ -58,7 +58,7 @@ const escCell = (v) => (/[",\n]/.test(String(v)) ? '"' + String(v).replace(/"/g,
  * @param {object} o
  * @param {string} o.dataDir   台账与私钥所在目录（命令行版 = tools/，应用版 = %APPDATA%\…）
  * @param {string} o.privPath  私钥 PEM 路径
- * @param {object} o.comps     赛事数据源（默认取 src/main/competitions）
+ * @param {object} o.comps     档位数据源（默认取 src/main/competitions）
  * @param {object} [o.license] 客户端验签模块（懒加载，避免核心依赖 Electron）
  * @param {string} [o.ledgerPath]  覆盖台账路径（测试用）
  * @param {string} [o.invitePath]  覆盖邀请台账路径（测试用）
@@ -71,14 +71,22 @@ function createIssuer({ dataDir, privPath, comps, license, ledgerPath, invitePat
   const C = comps || require(path.join(__dirname, '..', 'src', 'main', 'competitions'));
 
   // ---------------------------------------------------------------- 基础
+  /** 档位归一化。空值 → year（历史默认） */
+  function normalizePlan(s) {
+    if (s == null || s === '') return 'year';
+    return C.normalizePlan(s);
+  }
+
+  /**
+   * 老入口兼容：`--competition` 已废弃，收到时按年卡处理并提示。
+   * ⚠️ 不抛错 —— 卖家的命令行历史、脚本、肌肉记忆都还在用旧参数，
+   * 一抛错就等于"升级后突然不会发卡了"。提示写 stderr，不污染 stdout 的卡密。
+   */
   function normalizeCompetition(s) {
-    if (s == null || s === '') return 'all';
-    const id = String(s).toLowerCase();
-    const known = C.COMPETITIONS.map((c) => c.id).concat('all');
-    if (!known.includes(id)) {
-      throw new Error(`--competition 应为：${known.join(' / ')}（收到 "${s}"）`);
+    if (s != null && s !== '') {
+      process.stderr.write('提示：--competition 已废弃，请改用 --plan（week/month/year/forever）。本次按年卡签发。\n');
     }
-    return id;
+    return 'year';
   }
 
   function normalizeMachine(s) {
@@ -110,8 +118,10 @@ function createIssuer({ dataDir, privPath, comps, license, ledgerPath, invitePat
 
   // ---------------------------------------------------------------- 台账
   /**
-   * 确保台账是新表头（带 competition 列）。
-   * 老台账（7 列）自动迁移：按旧表头名字重排，competition 留空 = all。
+   * 确保台账是新表头（带 plan 列）。
+   * 老台账（competition 列）自动迁移：列名重命名，competition 值原样搬到 plan。
+   * ⚠️ 不能把 competition 悄悄写成 year —— 台账是收钱的凭据，
+   * 卖家对账时要能看出「这张是国赛卡还是年卡」。
    */
   function ensureLedger() {
     if (!fs.existsSync(LEDGER)) {
@@ -131,7 +141,8 @@ function createIssuer({ dataDir, privPath, comps, license, ledgerPath, invitePat
       const cells = splitCsvLine(l);
       const obj = {};
       oldCols.forEach((c, i) => { obj[c] = cells[i] ?? ''; });
-      obj.competition = obj.competition || 'all';
+      // 老列 competition → 新列 plan，值原样保留（all/具体赛事 id 都留着）
+      if (obj.plan == null || obj.plan === '') obj.plan = obj.competition || '';
       return want.map((w) => obj[w] ?? '');
     });
     fs.writeFileSync(LEDGER, [LEDGER_HEADER, ...body.map((r) => r.map(escCell).join(','))].join('\n') + '\n', 'utf8');
@@ -153,7 +164,7 @@ function createIssuer({ dataDir, privPath, comps, license, ledgerPath, invitePat
   function appendLedger(row) {
     ensureLedger();
     fs.appendFileSync(LEDGER,
-      [row.card, row.machine, row.edition, row.competition, row.issuedAt, row.expireAt, row.buyer, row.note]
+      [row.card, row.machine, row.edition, row.plan, row.issuedAt, row.expireAt, row.buyer, row.note]
         .map(escCell).join(',') + '\n', 'utf8');
   }
 
@@ -182,18 +193,23 @@ function createIssuer({ dataDir, privPath, comps, license, ledgerPath, invitePat
    * 签发一张卡密。**不打印任何东西** —— 输出由各入口自己决定
    * （命令行打印卡密、GUI 渲染成页面）。
    */
-  function issue({ machine, days, until, edition = 'pro', competition, buyer = '', note = '', now = Date.now() }) {
+  function issue({ machine, days, until, edition = 'pro', plan, competition, buyer = '', note = '', now = Date.now() }) {
     const priv = loadKey();
     const m = normalizeMachine(machine);
-    const comp = normalizeCompetition(competition);
+    // plan 与 competition 都收：新入口传 plan，老脚本传 competition（→ year）
+    const p = plan != null && plan !== '' ? normalizePlan(plan) : normalizeCompetition(competition);
 
     let expireAt;
     if (until) {
       const d = new Date(until + 'T23:59:59');
       if (Number.isNaN(d.getTime())) throw new Error('--until 格式应为 2027-09-30');
       expireAt = d.getTime();
+    } else if (C.PLANS[p] && C.PLANS[p].perpetual) {
+      // 永久买断：用 2099 哨兵值，不改验签逻辑（详见 competitions.js 的注释）
+      expireAt = C.PERPETUAL_MS;
     } else {
-      const n = Number(days == null ? 365 : days);
+      // 没给 days 也没给 until → 按档位天数；给了 days 以 days 为准（老习惯保留）
+      const n = Number(days == null ? C.PLANS[p].days : days);
       if (!Number.isFinite(n) || n <= 0) throw new Error('--days 要是正数');
       expireAt = now + n * 24 * 3600 * 1000;
     }
@@ -202,11 +218,13 @@ function createIssuer({ dataDir, privPath, comps, license, ledgerPath, invitePat
     const seq = nextSeq(year).toString().padStart(4, '0');
     const card = `MCM-${year}-${seq}`;
 
-    const payload = { card, machine: m, edition, competition: comp, expireAt, issuedAt: now, buyer };
+    const payload = { card, machine: m, edition, plan: p, expireAt, issuedAt: now, buyer };
+    // 永久卡额外打标：界面据此显示「永久」而不是一个 2099 的日期
+    if (C.PLANS[p] && C.PLANS[p].perpetual) payload.perpetual = true;
     const credential = sign(payload, priv);
 
     appendLedger({
-      card, machine: m, edition, competition: comp,
+      card, machine: m, edition, plan: p,
       issuedAt: new Date(now).toISOString(),
       expireAt: new Date(expireAt).toISOString(),
       buyer, note,
@@ -215,9 +233,11 @@ function createIssuer({ dataDir, privPath, comps, license, ledgerPath, invitePat
     return {
       credential,
       payload,
-      price: C.PRICES[comp],
+      price: C.PLANS[p].price,
+      planLabel: C.PLANS[p].label,
+      perpetual: !!(C.PLANS[p] && C.PLANS[p].perpetual),
       inviteCode: C.inviteCodeFromCard(card),
-      expireText: until || `${days == null ? 365 : days} 天`,
+      expireText: until || (C.planDaysText ? C.planDaysText(p) : `${C.PLANS[p].days} 天`),
     };
   }
 
@@ -295,23 +315,19 @@ function createIssuer({ dataDir, privPath, comps, license, ledgerPath, invitePat
 
   // ---------------------------------------------------------------- 导入
   /**
-   * 把 CSV 里的赛事字段解析成赛事 id。
-   * 先按 id，再按中文名/全名兜（手工改过或从别处粘的台账常写「华数杯」）。
-   *
-   * ⚠️ 认不出来时**保留原值并大声警告**，不要悄悄写成 all：
-   * 台账是收钱的凭据，把一张 ¥39 的单赛卡记成全能包，下次对账查不回来。
+   * 把 CSV 里的档位字段解析成 plan id。
+   * 认 week/month/year/forever 或中文标签；老台账的 competition 值
+   * （具体赛事 id / all）原样保留并标记 unknown，**不悄悄改写** ——
+   * 台账是收钱的凭据，对账时要能看出原值。
    */
-  function resolveCompetition(raw) {
+  function resolvePlan(raw) {
     const v = String(raw || '').trim();
-    if (!v) return { id: 'all', ok: true };
+    if (!v) return { id: 'year', ok: true };
     try {
-      return { id: normalizeCompetition(v), ok: true };
-    } catch { /* 继续按名字找 */ }
-    const low = v.toLowerCase();
-    const byName = C.COMPETITIONS.find(
-      (c) => c.name === v || c.fullName === v || c.name.toLowerCase() === low || c.fullName.toLowerCase() === low,
-    );
-    if (byName) return { id: byName.id, ok: true };
+      return { id: normalizePlan(v), ok: true };
+    } catch { /* 继续按中文标签找 */ }
+    const byLabel = Object.keys(C.PLANS).find((k) => C.PLANS[k].label === v);
+    if (byLabel) return { id: byLabel, ok: true };
     return { id: v, ok: false };
   }
 
@@ -331,7 +347,8 @@ function createIssuer({ dataDir, privPath, comps, license, ledgerPath, invitePat
       card: at(['card', '卡号']),
       machine: at(['machine', '机器码']),
       edition: at(['edition', '版本']),
-      competition: at(['competition', '赛事']),
+      // 新表头 plan/档位；老表头 competition/赛事也认（导入后原值保留并告警）
+      plan: at(['plan', '档位', 'competition', '赛事']),
       issuedAt: at(['issuedat', '签发时间']),
       expireAt: at(['expireat', '到期时间']),
       buyer: at(['buyer', '买家']),
@@ -351,15 +368,15 @@ function createIssuer({ dataDir, privPath, comps, license, ledgerPath, invitePat
       const card = get(COLS.card);
       if (!card) continue;
       if (known.has(card)) { skipped.push(card); continue; }
-      const comp = resolveCompetition(get(COLS.competition));
-      if (!comp.ok) unknown.push(`${card}: "${get(COLS.competition)}"`);
+      const p = resolvePlan(get(COLS.plan));
+      if (!p.ok) unknown.push(`${card}: "${get(COLS.plan)}"`);
       let machine = '';
       try { machine = normalizeMachine(get(COLS.machine)); } catch { machine = get(COLS.machine); }
       rows.push({
         card,
         machine,
         edition: get(COLS.edition) || 'pro',
-        competition: comp.id,
+        plan: p.id,
         issuedAt: get(COLS.issuedAt),
         expireAt: get(COLS.expireAt),
         buyer: get(COLS.buyer),
@@ -385,10 +402,10 @@ function createIssuer({ dataDir, privPath, comps, license, ledgerPath, invitePat
 
   /** 台账 → 中文表头 CSV（给 Excel 看；与 keygen 导出格式一致，可往回导） */
   function ledgerToCsvZh() {
-    const ZH = ['卡号', '机器码', '版本', '赛事', '签发时间', '到期时间', '买家', '备注'];
+    const ZH = ['卡号', '机器码', '版本', '档位', '签发时间', '到期时间', '买家', '备注'];
     const rows = readLedgerObjects();
     const body = rows.map((r) => [
-      r.card, pretty(r.machine || ''), r.edition, r.competition,
+      r.card, pretty(r.machine || ''), r.edition, r.plan,
       r.issuedAt, r.expireAt, r.buyer, r.note,
     ].map(escCell).join(','));
     return [ZH.join(','), ...body].join('\n') + '\n';
@@ -398,7 +415,7 @@ function createIssuer({ dataDir, privPath, comps, license, ledgerPath, invitePat
     // 路径
     dataDir, ledgerPath: LEDGER, invitePath: INVITES, privPath: PRIV,
     // 基础
-    normalizeCompetition, normalizeMachine, pretty, sign, loadKey, hasKey,
+    normalizePlan, normalizeCompetition, normalizeMachine, pretty, sign, loadKey, hasKey,
     // 台账
     ensureLedger, readLedger: readLedgerObjects, nextSeq, ledgerToCsv, ledgerToCsvZh,
     // 签发与验卡
@@ -406,7 +423,7 @@ function createIssuer({ dataDir, privPath, comps, license, ledgerPath, invitePat
     // 邀请
     readInvites, recordInvite, countInvites, inviteStats, whoIs,
     // 导入
-    parseImportCsv, importRows, resolveCompetition,
+    parseImportCsv, importRows, resolvePlan,
     // 常量
     LEDGER_HEADER, INVITE_HEADER, comps: C,
   };

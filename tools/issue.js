@@ -17,7 +17,7 @@
  * 这个仓库已经因此栽过三次（见 scripts/issuer-consistency-test.js）。
  *
  * 用法：
- *   node tools/issue.js new --machine 7E84-2A70-F998-6EB7 --days 365
+ *   node tools/issue.js new --machine 7E84-2A70-F998-6EB7 --plan year
  *   node tools/issue.js new --machine 7E84... --until 2027-09-30 --buyer 张三 --note 微信收款
  *   node tools/issue.js verify <卡密>
  *   node tools/issue.js list
@@ -69,27 +69,26 @@ function cmdNew() {
       days: arg('days'),
       until: arg('until'),
       edition: arg('edition', 'pro'),
-      competition: arg('competition'),
+      plan: arg('plan'),
       buyer: arg('buyer', ''),
       note: arg('note', ''),
     });
   } catch (e) {
     console.error('✗ ' + e.message);
     if (e.code === 'ENOKEY') console.error('  先跑一次密钥生成（或从备份恢复 keys/license-private.pem）。');
-    console.error('  用法：node tools/issue.js new --machine 7E84-2A70-F998-6EB7 --competition cumcm --days 365');
+    console.error('  用法：node tools/issue.js new --machine 7E84-2A70-F998-6EB7 --plan year');
+    console.error('  档位：week(7天/¥29) / month(30天/¥59) / year(365天/¥99) / forever(永久/¥199)');
     process.exitCode = 2;
     return;
   }
 
   const { credential, payload } = r;
-  const compName = payload.competition === 'all' ? '全能包（全部赛事）'
-    : comps.get(payload.competition).fullName;
   console.log('');
   console.log('  ┌─ 卡密已生成 ──────────────────────────────────────');
   console.log('  │ 卡号      ' + payload.card);
   console.log('  │ 机器码    ' + pretty(payload.machine));
   console.log('  │ 版本      ' + payload.edition);
-  console.log('  │ 解锁赛事  ' + compName + '（售价 ¥' + r.price + '）');
+  console.log('  │ 档位      ' + r.planLabel + ' · 全功能不限赛事（售价 ¥' + r.price + '）');
   console.log('  │ 有效期    ' + r.expireText + '（到 ' + new Date(payload.expireAt).toISOString().slice(0, 10) + '）');
   if (payload.buyer) console.log('  │ 买家      ' + payload.buyer);
   console.log('  └───────────────────────────────────────────────────');
@@ -114,7 +113,7 @@ function cmdVerify() {
     console.log('  卡号      ' + v.payload.card);
     if (v.payload.machine) console.log('  机器码    ' + pretty(v.payload.machine));
     console.log('  版本      ' + v.payload.edition);
-    console.log('  解锁赛事  ' + (v.payload.competition || 'all') + '（旧卡缺省按全能包）');
+    console.log('  档位      ' + (v.payload.plan ? comps.PLANS[v.payload.plan].label : '年卡（旧卡兼容）'));
     if (v.payload.expireAt) console.log('  到期      ' + new Date(v.payload.expireAt).toISOString().slice(0, 10));
   }
   process.exit(v.ok ? 0 : 1);
@@ -126,12 +125,12 @@ function cmdList() {
   if (!rows.length) { console.log('  还没发过卡。'); return; }
   console.log('  共 ' + rows.length + ' 张');
   console.log('');
-  console.log('  卡号'.padEnd(16) + '邀请码'.padEnd(10) + '赛事'.padEnd(12) + '到期'.padEnd(13) + '买家');
+  console.log('  卡号'.padEnd(16) + '邀请码'.padEnd(10) + '档位'.padEnd(12) + '到期'.padEnd(13) + '买家');
   console.log('  ' + '-'.repeat(68));
   for (const r of rows) {
     const inv = comps.inviteCodeFromCard(r.card) || '-';
     console.log('  ' + String(r.card).padEnd(14) + String(inv).padEnd(10)
-      + String(r.competition || 'all').padEnd(12)
+      + String(r.plan || '（旧卡）').padEnd(12)
       + String(r.expireAt || '').slice(0, 10).padEnd(13) + String(r.buyer || ''));
   }
 }
@@ -140,7 +139,7 @@ function cmdList() {
 function cmdInvite() {
   const code = argv[1] && !argv[1].startsWith('--') ? argv[1] : arg('code');
   if (!code) {
-    console.error('✗ 用法：node tools/issue.js invite <6位邀请码> [--buyer 张三] [--competition cumcm] [--amount 64] [--note 备注]');
+    console.error('✗ 用法：node tools/issue.js invite <6位邀请码> [--buyer 张三] [--plan year] [--amount 29] [--note 备注]');
     process.exitCode = 2;
     return;
   }
@@ -148,7 +147,7 @@ function cmdInvite() {
     const r = core.recordInvite({
       inviterCode: code,
       buyer: arg('buyer', ''),
-      competition: arg('competition', ''),
+      competition: arg('plan', ''),
       amount: arg('amount', ''),
       note: arg('note', ''),
     });
@@ -219,7 +218,7 @@ function cmdImport() {
 
   console.log(`\n导入 ${path.basename(p)}：新增 ${rows.length} 张，跳过重复 ${skipped.length} 张`);
   if (unknown.length) {
-    console.log(`\n  ⚠️ ${unknown.length} 张卡的赛事名对不上任何已知赛事，已按原样记入台账：`);
+    console.log(`\n  ⚠️ ${unknown.length} 张卡的档位对不上任何已知档位，已按原样记入台账：`);
     for (const u of unknown.slice(0, 10)) console.log('     ' + u);
     console.log('     没有偷偷改成 all —— 台账是收钱的凭据，记错了查不回来。');
     console.log('     请核对后手工改正（可先 --dry 看清单，再 `npm run issue -- list` 复查）。');
@@ -252,10 +251,10 @@ function usage() {
       签发一张绑定指定机器的卡密
 
       --machine      16 位机器码（带不带横杠都行）
-      --competition  解锁赛事：all / cumcm / huawei / mcm / shuwei / apmcm /
-                     bigdata / huashu / huashu_intl / mathorcup / others
-                     不填 = all（全能包）
-      --days         有效天数，默认 365
+      --plan        时长档位：week(7天/¥29) / month(30天/¥59) /
+                    year(365天/¥99) / forever(永久/¥199)
+                    不填 = year
+      --days        自定义有效天数（一般不填，按档位走）
       --until        指定到期日（如 2027-09-30），优先于 --days
       --edition      版本标识，默认 pro
       --buyer        买家备注，便于对账
@@ -268,7 +267,7 @@ function usage() {
   node tools/issue.js list
       列出已签发的卡密（含每张卡对应的邀请码）
 
-  node tools/issue.js invite <6位邀请码> [--buyer 张三] [--competition cumcm] [--amount 64]
+  node tools/issue.js invite <6位邀请码> [--buyer 张三] [--plan year] [--amount 29]
       记录一次成功推荐（邀请码 = 卡号后 6 位，见 list）
       满 ${comps.INVITE_RULES.threshold} 人会自动提醒你发奖励
 

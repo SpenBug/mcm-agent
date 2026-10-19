@@ -22,7 +22,7 @@ async function call(channel, ...args) {
 
 contextBridge.exposeInMainWorld('issuer', {
   info: () => call('app:info'),
-  competitions: () => call('competitions:list'),
+  plans: () => call('plans:list'),
   prices: () => call('prices'),
   ledger: () => call('ledger:list'),
   issue: (form) => call('issue:new', form),

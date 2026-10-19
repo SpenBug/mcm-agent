@@ -23,26 +23,27 @@ const TOKEN = process.env.MCM_ISSUER_TOKEN || crypto.randomBytes(12).toString('h
 const PORT = Number(process.env.MCM_ISSUER_PORT || 38901);
 
 /**
- * 赛事下拉框的选项。
+ * 档位下拉框的选项。
  *
- * 价格读 src/main/competitions.js 的 PRICES —— 那是客户端解锁判断用的同一份数据。
+ * 价格读 src/main/competitions.js 的 PLANS —— 那是客户端授权用的同一份数据。
  * 不抄一份、也不在 HTML 里写死数字：改了定价后如果这里还留着旧价，
  * 你按旧价收钱、客户端按新价放行（或反过来），对账对不上还说不清是谁的错。
  */
+const PLAN_IDS = Object.keys(comps.PLANS)
+  .sort((a, b) => comps.PLANS[b].price - comps.PLANS[a].price
+    || (comps.PLANS[b].days || 0) - (comps.PLANS[a].days || 0));
 const COMP_OPTIONS = [
-  // 占位项：强制你**主动选一次**赛事。
-  // 以前全能包是默认选中项，于是"没注意、直接点签发"就会把 ¥39 的单赛卡
-  // 签成 ¥168 的权限 —— 钱少了、台账上还看不出来。
+  // 占位项：强制你**主动选一次**档位。
+  // 以前全能包是默认选中项，于是"没注意、直接点签发"就会把 ¥29 的月卡
+  // 签成 ¥199 的权限 —— 钱少了、台账上还看不出来。
   // 用 value="" 而不是禁用整个下拉：不选就签不出去，报错文案也说得清。
-  '<option value="" selected disabled>请选择解锁的赛事…</option>',
-  `<option value="all">全能包 · 解锁全部赛事（¥${comps.PRICES.all}）</option>`,
-  ...comps.COMPETITIONS.map(
-    (c) => `<option value="${c.id}">${c.name}（¥${comps.PRICES[c.id] ?? c.price}）</option>`,
+  '<option value="" selected disabled>请选择时长档位…</option>',
+  ...PLAN_IDS.map(
+    (id) => `<option value="${id}">${comps.PLANS[id].label} · ${comps.planDaysText(id)}（¥${comps.PLANS[id].price}）</option>`,
   ),
 ].join('\n    ');
 
-// 价格从数据源取，别写死 ¥168 —— 改了定价这句提示就会开始说假话。
-const COMP_HINT = `必须先选一项。全能包 ¥${comps.PRICES.all} 解锁全部；单赛卡只解锁那一个赛事。`;
+const COMP_HINT = '必须先选一项。买了就能用全部功能，不限赛事；到期自然续费。';
 
 const HTML = `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -123,8 +124,8 @@ const HTML = `<!DOCTYPE html>
     <label>① 用户的机器码</label>
     <input id="machine" placeholder="7E84-2A70-F998-6EB7（带不带横杠、大小写都行）" autocomplete="off">
 
-    <label>② 解锁赛事（决定这张卡值多少钱）</label>
-    <select id="competition">${COMP_OPTIONS}</select>
+    <label>② 时长档位（决定这张卡值多少钱、能用多久）</label>
+    <select id="plan">${COMP_OPTIONS}</select>
     <div class="hint" id="compHint">${COMP_HINT}</div>
 
     <label>③ 有效期</label>
@@ -184,26 +185,24 @@ $('preset').addEventListener('change', () => {
   if (custom) $('until').focus();
 });
 
-$('competition') && $('competition').addEventListener('change', () => {
-  const sel = $('competition');
+$('plan') && $('plan').addEventListener('change', () => {
+  const sel = $('plan');
   const opt = sel.options[sel.selectedIndex];
-  $('compHint').textContent = sel.value === 'all'
-    ? '全能包：解锁全部赛事。'
-    : '只解锁「' + opt.text.replace(/（¥\d+）/, '') + '」。买家打别的赛事会被拦下。';
+  $('compHint').textContent = opt.text.replace(/（¥\d+）/, '') + '：全功能不限赛事，到期自然续费。';
 });
 
 $('go').addEventListener('click', async () => {
   const machine = $('machine').value.trim();
   if (!machine) { showErr('先填机器码'); $('machine').focus(); return; }
-  const competition = ($('competition') || { value: '' }).value;
-  if (!competition) { showErr('先选「解锁赛事」—— 这决定售价与买家能用哪个赛事'); $('competition').focus(); return; }
+  const plan = ($('plan') || { value: '' }).value;
+  if (!plan) { showErr('先选「时长档位」—— 这决定售价与有效期'); $('plan').focus(); return; }
   const preset = $('preset').value;
   if (preset === 'custom' && !$('until').value) { showErr('选了「指定到期日」但没填日期'); $('until').focus(); return; }
   const payload = {
     machine,
     buyer: $('buyer').value.trim(),
-    competition,
-    ...(preset === 'custom' ? { until: $('until').value } : { days: Number(preset) }),
+    plan,
+    ...(preset === 'custom' ? { until: $('until').value } : {}),
   };
   $('go').disabled = true;
   try {
@@ -211,7 +210,7 @@ $('go').addEventListener('click', async () => {
     if (!r.ok) { showErr(r.error || '签发失败'); return; }
     $('out').classList.remove('hidden');
     $('cred').value = r.credential;
-    $('meta').innerHTML = '卡号 <b>' + r.card + '</b> · 解锁 <b>' + r.competitionName
+    $('meta').innerHTML = '卡号 <b>' + r.card + '</b> · 档位 <b>' + r.planLabel
       + (r.price ? '（¥' + r.price + '）' : '') + '</b> · 机器码 <b>' + r.machinePretty
       + '</b> · 有效期至 <b>' + r.expireText + '</b>'
       + '<br>邀请码 <b>' + r.inviteCode + '</b>（买家推荐 3 人后凭这个找你领奖）';
@@ -245,15 +244,15 @@ async function loadLedger() {
   }
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const body = rows.slice(-14).reverse().map((r) => {
-    const comp = r.competition === 'all' ? '全能包' : esc(r.competition);
+    const pl = r.plan ? (comps.PLANS[r.plan] ? comps.PLANS[r.plan].label : esc(r.plan)) : '年卡（旧卡）';
     const exp = r.expireAt ? new Date(r.expireAt).toISOString().slice(0, 10) : '—';
-    return '<tr><td class="mono">' + esc(r.card) + '</td><td>' + comp
+    return '<tr><td class="mono">' + esc(r.card) + '</td><td>' + pl
       + '</td><td class="mono">' + esc(r.machine || '')
       + '</td><td class="mono">' + esc(r.inviteCode || '')
       + '</td><td>' + exp + '</td><td>' + esc(r.buyer || '') + '</td></tr>';
   }).join('');
   $('ledger').innerHTML =
-    '<table><tr><th>卡号</th><th>解锁赛事</th><th>机器码</th><th>邀请码</th><th>到期</th><th>买家</th></tr>'
+    '<table><tr><th>卡号</th><th>档位</th><th>机器码</th><th>邀请码</th><th>到期</th><th>买家</th></tr>'
     + body + '</table>';
 }
 
@@ -293,16 +292,16 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/ledger') {
-    // readLedger() 返回的是**对象数组**（{card, machine, edition, competition, ...}），
+    // readLedger() 返回的是**对象数组**（{card, machine, edition, plan, ...}），
     // 由 issue.js 按表头列名映射而来。
-    // ⚠️ 这里曾经按字符串数组下标取（a[0]/a[1]…），台账加了 competition 列之后
+    // ⚠️ 这里曾经按字符串数组下标取（a[0]/a[1]…），台账加了 plan 列之后
     // 就整体错位，GUI 的"已签发"表格全渲染成空行 —— 等于你看不见自己发过哪些卡。
     // 改成直接用字段名，以后加列也不会再错位。
     const rows = readLedger().map((r) => ({
       card: r.card || '',
       machine: r.machine ? pretty(r.machine) : '',
       edition: r.edition || '',
-      competition: r.competition || 'all',
+      plan: r.plan || 'year',
       issuedAt: r.issuedAt || '',
       expireAt: r.expireAt || '',
       buyer: r.buyer || '',
@@ -316,32 +315,32 @@ const server = http.createServer(async (req, res) => {
     const b = await readBody(req);
     try {
       // 服务端也要拦：界面那道必填只是防手滑，绕过界面（或以后改前端漏了）
-      // 还是会走到 issue.js 的"空 = all"默认值，把单赛卡签成全能包。
-      if (!b.competition) {
-        return send(res, 200, { ok: false, error: '必须指定解锁赛事（competition），不接受默认全能包' });
+      // 还是会走到 issue.js 的"空 = year"默认值，把月卡签成年卡。
+      if (!b.plan) {
+        return send(res, 200, { ok: false, error: '必须指定时长档位（plan），不接受默认年卡' });
       }
       const { credential, payload } = issue({
         machine: b.machine,
         days: b.days,
         until: b.until,
         edition: b.edition || 'pro',
-        // ⚠️ 必须透传：不传时 issue.js 默认 'all'（全能包 ¥168 的权限）。
-        // 以前这个界面没有赛事选项，于是**卖 ¥39 的单赛卡也会签成全能包**，
+        // ⚠️ 必须透传：不传时 issue.js 默认 'year'（年卡的权限）。
+        // 以前这个界面没有档位选项，于是**卖 ¥29 的月卡也会签成年卡**，
         // 买家白拿、你亏钱，而且台账上看不出来。
-        competition: b.competition,
+        plan: b.plan,
         buyer: b.buyer || '',
       });
       const until = new Date(payload.expireAt);
-      const comp = comps.get(payload.competition);
+      const pl = comps.PLANS[payload.plan] || comps.PLANS.year;
       return send(res, 200, {
         ok: true,
         credential,
         card: payload.card,
         machine: payload.machine,
         machinePretty: pretty(payload.machine),
-        competition: payload.competition,
-        competitionName: comp ? comp.fullName || comp.name : payload.competition,
-        price: comp ? comp.price : null,
+        plan: payload.plan,
+        planLabel: pl.label,
+        price: pl.price,
         inviteCode: comps.inviteCodeFromCard(payload.card),
         expireText: until.toISOString().slice(0, 10),
       });

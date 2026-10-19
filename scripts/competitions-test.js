@@ -3,6 +3,8 @@
  * 全部注入固定 now，不依赖真实时间。
  */
 const C = require('../src/main/competitions');
+const fs = require('node:fs');
+const path = require('node:path');
 
 let pass = 0;
 let fail = 0;
@@ -16,10 +18,6 @@ const HOUR = 3600 * 1000;
 console.log('=== ① 数据完整性 ===');
 const ids = C.COMPETITIONS.map((c) => c.id);
 check('id 不重复', new Set(ids).size === ids.length);
-check('每个赛事都有价目', C.COMPETITIONS.every((c) => typeof c.price === 'number' && c.price > 0));
-check('价目表 = 用户确认的定价', JSON.stringify(C.PRICES) === JSON.stringify(
-  { cumcm: 69, huawei: 79, mcm: 79, shuwei: 39, apmcm: 39, bigdata: 39, huashu: 39, huashu_intl: 39, mathorcup: 29, others: 29, all: 168 }),
-  JSON.stringify(C.PRICES));
 // ⚠️ 不强制 https：MathorCup 官网只有 http，国赛报名入口（知网）也只有 http。
 // 但要保证**没有危险协议**（javascript: / file: 之类），那才是真正的风险面。
 check('官网/报名链接无危险协议', C.COMPETITIONS.every((c) =>
@@ -87,17 +85,39 @@ check('华数杯国际赛时间与赛题发布一致',
 check('华数杯国际赛是 4 天赛',
   Math.round((C.get('huashu_intl').endAt - C.get('huashu_intl').startAt) / HOUR) === 99,
   String(Math.round((C.get('huashu_intl').endAt - C.get('huashu_intl').startAt) / HOUR)) + ' 小时');
-check('大数据赛与 MathorCup 建模赛是两个独立 SKU',
-  C.get('bigdata').id !== C.get('mathorcup').id && C.get('bigdata').price !== undefined);
+check('大数据赛与 MathorCup 建模赛是两个独立赛事',
+  C.get('bigdata').id !== C.get('mathorcup').id);
 
 console.log();
-console.log('=== ④C 定价（用户确认：39 档统一）===');
-check('亚太赛已调为 39', C.PRICES.apmcm === 39, String(C.PRICES.apmcm));
-check('39 档五个赛事一致',
-  ['shuwei', 'apmcm', 'bigdata', 'huashu', 'huashu_intl'].every((id) => C.PRICES[id] === 39));
-check('小赛保持 29', C.PRICES.mathorcup === 29 && C.PRICES.others === 29);
-check('主力赛事不变', C.PRICES.cumcm === 69 && C.PRICES.huawei === 79 && C.PRICES.mcm === 79);
-check('全能包 168', C.PRICES.all === 168);
+console.log('=== ④C 时长档位与定价 ===');
+// 2026-10 起授权改时长制：赛事不再参与授权与定价。
+check('四个档位齐全', ['week', 'month', 'year', 'forever'].every((k) => C.PLANS[k]),
+  Object.keys(C.PLANS).join('/'));
+check('周卡 7 天', C.PLANS.week.days === 7);
+check('月卡 30 天', C.PLANS.month.days === 30);
+check('永久买断没有天数', C.PLANS.forever.days === null);
+check('年卡 365 天', C.PLANS.year.days === 365);
+check('价格随时长递增（29/59/99/199）',
+  C.PLANS.week.price === 29 && C.PLANS.month.price === 59
+  && C.PLANS.year.price === 99 && C.PLANS.forever.price === 199,
+  `${C.PLANS.week.price}/${C.PLANS.month.price}/${C.PLANS.year.price}/${C.PLANS.forever.price}`);
+check('赛事数据不再带价格（已与授权解耦）',
+  C.COMPETITIONS.every((c) => c.price === undefined));
+check('不再导出 PRICES / unlocks',
+  C.PRICES === undefined && C.unlocks === undefined);
+check('normalizePlan 认四个档位',
+  ['week', 'month', 'year', 'forever'].every((k) => C.normalizePlan(k) === k));
+check('normalizePlan 拒未知档位', (() => {
+  try { C.normalizePlan('cumcm'); return false; } catch { return true; }
+})());
+check('planOf：新卡按 plan', C.planOf({ plan: 'month' }) === 'month');
+check('永久卡到期哨兵是 2099', C.PERPETUAL_MS === Date.UTC(2099, 0, 1),
+  new Date(C.PERPETUAL_MS).toISOString().slice(0, 10));
+check('planDaysText：永久不显示天数', C.planDaysText('forever') === '永久'
+  && C.planDaysText('month') === '30 天');
+check('isPerpetual 认永久卡', C.isPerpetual({ plan: 'forever' }) === true
+  && C.isPerpetual({ plan: 'year' }) === false && C.isPerpetual({}) === false);
+check('planOf：旧卡无 plan → 年卡兼容', C.planOf({}) === 'year' && C.planOf(null) === 'year');
 
 console.log();
 console.log('=== ④D 邀请码派生 ===');
@@ -143,14 +163,33 @@ fsx.rmSync(tmpInv, { force: true });
 delete process.env.MCM_LEDGER;
 delete process.env.MCM_INVITE_LEDGER;
 
-// ---------- ⑤ 解锁判断 ----------
+// ---------- ⑥ 授权口径：时长制 ----------
+// 授权改时长制后，门禁只剩「模式」一层：体验中/已激活放行，过期/未激活拦截。
+// 这里锁住三件容易被后人改坏的事：
+//   ① 激活逻辑不再依赖赛事字段（否则改赛事数据会让已售卡失效）；
+//   ② 赛事切换 IPC 保持撤掉状态（面板已经没了，留着就是死代码）；
+//   ③ 凭证里不再出现 competition 字段。
 console.log();
-console.log('=== ⑤ 解锁判断 ===');
-check('all 解锁任何赛事', C.unlocks('all', 'cumcm') === true);
-check('缺省（undefined/null）按 all 兼容', C.unlocks(undefined, 'cumcm') === true && C.unlocks(null, 'mcm') === true);
-check('国赛卡不解锁华为杯', C.unlocks('cumcm', 'huawei') === false);
-check('国赛卡解锁国赛', C.unlocks('cumcm', 'cumcm') === true);
-check('others 档不等于具体赛事', C.unlocks('others', 'mathorcup') === false);
+console.log('=== ⑥ 授权口径：时长制 ===');
+const ipcSrc = fs.readFileSync(path.join(__dirname, '..', 'src', 'main', 'ipc.js'), 'utf8');
+// currentCompetition 仍保留，但只用于选 AI 声明措辞（与授权无关）
+check('激活不再按赛事写 config',
+  !/writeConfig\(\{ currentCompetition/.test(ipcSrc));
+check('激活日志报档位不报赛事', /档位=/.test(ipcSrc));
+check('界面不再暴露赛事切换 IPC',
+  !/ipcMain\.handle\('competitions:list'/.test(ipcSrc)
+  && !/ipcMain\.handle\('competition:setCurrent'/.test(ipcSrc));
+check('门禁提示分「到期」与「体验结束」两种',
+  ipcSrc.includes('授权已到期') && ipcSrc.includes('体验已结束'));
+
+const coreSrc = fs.readFileSync(path.join(__dirname, '..', 'tools', 'issuer-core.js'), 'utf8');
+check('凭证 payload 带 plan 不带 competition',
+  /payload = \{ card, machine: m, edition, plan: p,/.test(coreSrc)
+  && !/payload = \{ card, machine: m, edition, competition/.test(coreSrc));
+check('台账表头用 plan 列', /LEDGER_HEADER = 'card,machine,edition,plan,/.test(coreSrc));
+check('老 --competition 参数仍可发卡（不抛错）',
+  /function normalizeCompetition\(s\)/.test(coreSrc)
+  && /已废弃，请改用 --plan/.test(coreSrc));
 
 // ---------- 结果 ----------
 console.log();

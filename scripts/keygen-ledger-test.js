@@ -121,10 +121,10 @@ console.log('\n=== ③ 清浏览器数据后导入 CLI 台账 → 接着排号 =
 {
   // 模拟：命令行发了 6 张，网页这边台账是空的（清过数据）
   const { ctx } = makeCtx([]);
-  const csv = 'card,machine,edition,competition,issuedAt,expireAt,buyer,note\n'
-    + 'MCM-2026-0001,7E84,pro,all,,,,\n'
-    + 'MCM-2026-0002,7E84,pro,all,,,,\n'
-    + 'MCM-2026-0006,7E84,pro,mathorcup,,,\n';
+  const csv = 'card,machine,edition,plan,issuedAt,expireAt,buyer,note\n'
+    + 'MCM-2026-0001,7E84,pro,year,,,,\n'
+    + 'MCM-2026-0002,7E84,pro,year,,,,\n'
+    + 'MCM-2026-0006,7E84,pro,month,,,\n';
   const rows = ctx.parseCsv(csv);
   const head = rows[0].map((h) => h.toLowerCase());
   const iCard = head.indexOf('card');
@@ -139,10 +139,10 @@ console.log('\n=== ③ 清浏览器数据后导入 CLI 台账 → 接着排号 =
 
 console.log('\n=== ④ mergeLedger 不覆盖已有记录 ===');
 {
-  const { ctx } = makeCtx([{ card: 'MCM-2026-0001', buyer: '真实买家', competition: 'cumcm' }]);
-  ctx.mergeLedger([{ card: 'MCM-2026-0001', buyer: '', competition: 'all' }]);
+  const { ctx } = makeCtx([{ card: 'MCM-2026-0001', buyer: '真实买家', plan: 'month' }]);
+  ctx.mergeLedger([{ card: 'MCM-2026-0001', buyer: '', plan: 'year' }]);
   const kept = JSON.parse(ctx.localStorage.getItem('mcm.ledger'))[0];
-  check('同卡号保留原记录（不被空值覆盖）', kept.buyer === '真实买家' && kept.competition === 'cumcm',
+  check('同卡号保留原记录（不被空值覆盖）', kept.buyer === '真实买家' && kept.plan === 'month',
     JSON.stringify(kept));
 }
 
@@ -235,14 +235,14 @@ console.log('\n=== ⑦ keygen 导出的 CSV 能被 issue.js import 读回（往�
   check('抠到 keygen 的导出表头', Boolean(m), 'keygen.html 里 head 数组的写法变了，测试要同步');
   if (m) {
     const head = m[1].split(',').map((s) => s.trim().replace(/^['"]|['"]$/g, ''));
-    check('表头含卡号/机器码/赛事/买家', ['卡号', '机器码', '赛事', '买家'].every((k) => head.includes(k)),
+    check('表头含卡号/机器码/档位/买家', ['卡号', '机器码', '档位', '买家'].every((k) => head.includes(k)),
       head.join('/'));
 
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ayigu-roundtrip-'));
     const ledger = path.join(dir, 'issued.csv');
     const csvPath = path.join(dir, 'kg.csv');
     const esc = (v) => `"${String(v).replace(/"/g, '""')}"`;
-    const row = ['MCM-2026-0099', '7E84-2A70-F998-6EB7', 'bigdata', 'pro',
+    const row = ['MCM-2026-0099', '7E84-2A70-F998-6EB7', 'month', 'pro',
       '2026-10-09T01:00:00.000Z', '2027-10-09T01:00:00.000Z', '张三', 'eyJxxx'];
     fs.writeFileSync(csvPath, '\uFEFF' + [head, row].map((r) => r.map(esc).join(',')).join('\r\n') + '\r\n', 'utf8');
 
@@ -254,7 +254,7 @@ console.log('\n=== ⑦ keygen 导出的 CSV 能被 issue.js import 读回（往�
     check('import 认下这张卡', /新增 1 张/.test(out), out.split('\n').find((l) => l.includes('新增')));
 
     const written = fs.readFileSync(ledger, 'utf8');
-    check('赛事正确落到 competition 列', /MCM-2026-0099,7E842A70F9986EB7,pro,bigdata/.test(written),
+    check('档位正确落到 plan 列', /MCM-2026-0099,7E842A70F9986EB7,pro,month/.test(written),
       written.split('\n').find((l) => l.startsWith('MCM-2026-0099')));
     check('买家名没被列错位吃掉', written.includes('张三'));
     check('带 BOM 的 CSV 也能解析表头', !out.includes('没找到') && !out.includes('不认识'));
@@ -263,26 +263,26 @@ console.log('\n=== ⑦ keygen 导出的 CSV 能被 issue.js import 读回（往�
     const dir2 = fs.mkdtempSync(path.join(os.tmpdir(), 'ayigu-name-'));
     const csv2 = path.join(dir2, 'n.csv');
     const ledger2 = path.join(dir2, 'issued.csv');
-    fs.writeFileSync(csv2, '\uFEFF' + [head, ['MCM-2026-0100', 'AAAA-BBBB-CCCC-DDDD', '华数杯', 'pro',
+    fs.writeFileSync(csv2, '\uFEFF' + [head, ['MCM-2026-0100', 'AAAA-BBBB-CCCC-DDDD', '永久买断', 'pro',
       '', '', '李四', 'e'].map(esc).join(',')].join('\n'), 'utf8');
     const out2 = execFileSync(process.execPath, [path.join(ROOT, 'tools', 'issue.js'), 'import', csv2], {
       cwd: ROOT, encoding: 'utf8', env: { ...process.env, MCM_LEDGER: ledger2 },
     });
-    check('中文赛事名「华数杯」解析成 huashu', /huashu/.test(fs.readFileSync(ledger2, 'utf8')),
+    check('中文档位名「永久买断」解析成 forever', /forever/.test(fs.readFileSync(ledger2, 'utf8')),
       out2.split('\n').find((l) => l.includes('260100')));
 
     // 认不出的赛事不能被悄悄写成 all（台账是收钱凭据）
     const dir3 = fs.mkdtempSync(path.join(os.tmpdir(), 'ayigu-bad-'));
     const csv3 = path.join(dir3, 'b.csv');
     const ledger3 = path.join(dir3, 'issued.csv');
-    fs.writeFileSync(csv3, '\uFEFF' + [head, ['MCM-2026-0101', 'AAAA-BBBB-CCCC-DDDD', '世界杯杯', 'pro',
+    fs.writeFileSync(csv3, '\uFEFF' + [head, ['MCM-2026-0101', 'AAAA-BBBB-CCCC-DDDD', '终身卡', 'pro',
       '', '', '王五', 'e'].map(esc).join(',')].join('\n'), 'utf8');
     const out3 = execFileSync(process.execPath, [path.join(ROOT, 'tools', 'issue.js'), 'import', csv3], {
       cwd: ROOT, encoding: 'utf8', env: { ...process.env, MCM_LEDGER: ledger3 },
     });
     const l3 = fs.readFileSync(ledger3, 'utf8');
-    check('未知赛事保留原值并警告（不静默变 all）',
-      l3.includes('世界杯杯') && /对不上任何已知赛事/.test(out3), l3.split('\n').find((x) => x.startsWith('MCM-2026-0101')));
+    check('未知档位保留原值并警告（不静默变 year）',
+      l3.includes('终身卡') && /对不上任何已知档位/.test(out3), l3.split('\n').find((x) => x.startsWith('MCM-2026-0101')));
 
     fs.rmSync(dir, { recursive: true, force: true });
     fs.rmSync(dir2, { recursive: true, force: true });
@@ -326,13 +326,14 @@ const ctx2 = {
   vm.createContext(ctx2);
   vm.runInContext(src2, ctx2);
 
-  const unnamed = comps.COMPETITIONS.filter((c) => !ctx2.compLabel(c.id) || ctx2.compLabel(c.id) === c.id);
-  check('每个赛事都能取到中文显示名', unnamed.length === 0, '裸 id：' + unnamed.map((c) => c.id).join(','));
-  check('大数据赛显示名含「大数据」', ctx2.compLabel('bigdata').includes('大数据'), ctx2.compLabel('bigdata'));
-  check('华数杯显示名含「华数杯」', ctx2.compLabel('huashu').includes('华数杯'), ctx2.compLabel('huashu'));
-  check('全能包显示名含「全能包」', ctx2.compLabel('all').includes('全能包'), ctx2.compLabel('all'));
-  check('已下架赛事原样返回（不瞎猜名字）', ctx2.compLabel('retired_cup') === 'retired_cup');
-  check('空值按全能包处理', ctx2.compLabel('').includes('全能包'), ctx2.compLabel(''));
+  const planIds = Object.keys(comps.PLANS);
+  const unnamed = planIds.filter((id) => !ctx2.compLabel(id) || ctx2.compLabel(id) === id);
+  check('每个档位都能取到中文显示名', unnamed.length === 0, '裸 id：' + unnamed.join(','));
+  check('年卡显示名含「年卡」', ctx2.compLabel('year').includes('年卡'), ctx2.compLabel('year'));
+  check('月卡显示名含「月卡」', ctx2.compLabel('month').includes('月卡'), ctx2.compLabel('month'));
+  // 老台账里可能留着赛事 id（如 bigdata）或 all，必须原样显示别瞎猜
+  check('老赛事 id 原样返回（不瞎猜名字）', ctx2.compLabel('bigdata') === 'bigdata');
+  check('空值按年卡兼容', ctx2.compLabel('').includes('年卡'), ctx2.compLabel(''));
 
   check('fmtDate 吃 ISO 字符串', ctx2.fmtDate('2027-10-09T01:00:00.000Z') === '2027-10-09',
     ctx2.fmtDate('2027-10-09T01:00:00.000Z'));
@@ -355,11 +356,11 @@ console.log('\n=== ⑨ 反向验证（确认检查真的会红）===');
 {
   // compLabel 的兜底行为：下拉里找不到对应 option 时，必须原样返回裸 id，
   // 而不是凭记忆编一个名字 —— 台账上显示错赛事名比显示裸 id 更糟。
-  const saved = optionText.huashu;
-  delete optionText.huashu;
-  check('选项缺失时不编造名字', ctx2.compLabel('huashu') === 'huashu', ctx2.compLabel('huashu'));
-  optionText.huashu = saved;
-  check('恢复后重新取到名字', ctx2.compLabel('huashu').includes('华数杯'), ctx2.compLabel('huashu'));
+  const saved = optionText.month;
+  delete optionText.month;
+  check('选项缺失时不编造名字', ctx2.compLabel('month') === 'month', ctx2.compLabel('month'));
+  optionText.month = saved;
+  check('恢复后重新取到名字', ctx2.compLabel('month').includes('月卡'), ctx2.compLabel('month'));
 }
 
 console.log(`\n结果：${pass}/${pass + fail} 通过`);

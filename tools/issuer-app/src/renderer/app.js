@@ -13,7 +13,7 @@ const api = window.issuer;
 
 let INFO = null;
 let LEDGER = [];
-let COMPS = [];
+let PLANS = [];
 
 /* ---------------------------------------------------------------- 通用 */
 
@@ -61,13 +61,13 @@ async function boot() {
   if (INFO.hasKey) { kb.textContent = '私钥已就绪'; kb.classList.remove('bad'); }
   else { kb.textContent = '⚠ 缺私钥'; kb.classList.add('bad'); }
 
-  // 赛事下拉：全部从数据源生成，不在界面里写死价格
-  COMPS = await api.competitions();
-  const sel = $('competition');
-  for (const c of COMPS) {
+  // 档位下拉：全部从数据源生成，不在界面里写死价格
+  PLANS = await api.plans();
+  const sel = $('plan');
+  for (const c of PLANS) {
     const o = document.createElement('option');
     o.value = c.id;
-    o.textContent = `${c.name}（¥${c.price}）`;
+    o.textContent = `${c.name}（${c.daysText || (c.days + ' 天')} / ¥${c.price}）`;
     sel.appendChild(o);
   }
 
@@ -91,12 +91,10 @@ $('preset').addEventListener('change', () => {
   if (custom) $('until').focus();
 });
 
-$('competition').addEventListener('change', () => {
-  const sel = $('competition');
+$('plan').addEventListener('change', () => {
+  const sel = $('plan');
   const opt = sel.options[sel.selectedIndex];
-  $('compHint').textContent = sel.value === 'all'
-    ? '全能包：解锁全部赛事。'
-    : `只解锁「${opt.text.replace(/（¥\d+）/, '')}」。买家打别的赛事会被拦下。`;
+  $('compHint').textContent = `${opt.text.replace(/（.*）/, '')}：全功能不限赛事，到期自然续费。`;
 });
 
 let LAST = null;
@@ -105,8 +103,8 @@ $('go').addEventListener('click', async () => {
   showErr('issueErr', '');
   const machine = $('machine').value.trim();
   if (!machine) { showErr('issueErr', '先填机器码'); $('machine').focus(); return; }
-  const competition = $('competition').value;
-  if (!competition) { showErr('issueErr', '先选「解锁赛事」—— 这决定售价与买家能用哪个赛事'); $('competition').focus(); return; }
+  const plan = $('plan').value;
+  if (!plan) { showErr('issueErr', '先选「时长档位」—— 这决定售价与有效期'); $('plan').focus(); return; }
   const preset = $('preset').value;
   if (preset === 'custom' && !$('until').value) { showErr('issueErr', '选了「指定到期日」但没填日期'); $('until').focus(); return; }
 
@@ -114,16 +112,16 @@ $('go').addEventListener('click', async () => {
   try {
     const r = await api.issue({
       machine,
-      competition,
+      plan,
       buyer: $('buyer').value.trim(),
       note: $('note').value.trim(),
-      ...(preset === 'custom' ? { until: $('until').value } : { days: Number(preset) }),
+      ...(preset === 'custom' ? { until: $('until').value } : {}),
     });
     LAST = r;
     show($('out'), true);
     $('cred').value = r.credential;
     $('meta').innerHTML =
-      `卡号 <b>${esc(r.card)}</b> · 解锁 <b>${esc(r.competitionName)}</b>`
+      `卡号 <b>${esc(r.card)}</b> · 档位 <b>${esc(r.planLabel)}</b>`
       + (r.price ? `（¥${esc(r.price)}）` : '')
       + `<br>机器码 <b>${esc(r.machinePretty)}</b> · 有效期至 <b>${esc(r.expireText)}</b>`
       + `<br>邀请码 <b>${esc(r.inviteCode)}</b>（买家推荐 3 人后凭这个找你领奖）`;
@@ -144,8 +142,8 @@ $('copyAll').addEventListener('click', async () => {
   if (!LAST) return;
   const text = [
     `卡号：${LAST.card}`,
-    `解锁：${LAST.competitionName}${LAST.price ? `（¥${LAST.price}）` : ''}`,
-    `有效期至：${LAST.expireText}`,
+    `档位：${LAST.planLabel}${LAST.price ? `（¥${LAST.price}）` : ''}`,
+    `有效期：${LAST.perpetual ? '永久' : '至 ' + LAST.expireText}`,
     `机器码：${LAST.machinePretty}`,
     '',
     '卡密（在软件里粘贴）：',
@@ -170,7 +168,7 @@ async function loadLedger() {
 function renderLedger() {
   const q = $('q').value.trim().toLowerCase();
   const rows = q
-    ? LEDGER.filter((r) => [r.card, r.machine, r.machinePretty, r.buyer, r.inviteCode, r.competition, r.note]
+    ? LEDGER.filter((r) => [r.card, r.machine, r.machinePretty, r.buyer, r.inviteCode, r.plan, r.note]
       .some((v) => String(v || '').toLowerCase().includes(q)))
     : LEDGER;
 
@@ -184,7 +182,7 @@ function renderLedger() {
   }
   const body = rows.slice().reverse().map((r) => `<tr>
     <td class="mono">${esc(r.card)}</td>
-    <td>${esc(r.competition || 'all')}</td>
+    <td>${esc(r.plan || '（旧卡）')}</td>
     <td class="mono">${esc(r.machinePretty || r.machine)}</td>
     <td class="mono">${esc(r.inviteCode)}</td>
     <td>${esc(String(r.expireAt || '').slice(0, 10))}</td>
@@ -192,7 +190,7 @@ function renderLedger() {
     <td>${esc(r.note)}</td>
   </tr>`).join('');
   $('ledgerWrap').innerHTML = `<table><thead><tr>
-    <th>卡号</th><th>赛事</th><th>机器码</th><th>邀请码</th><th>到期</th><th>买家</th><th>备注</th>
+    <th>卡号</th><th>档位</th><th>机器码</th><th>邀请码</th><th>到期</th><th>买家</th><th>备注</th>
   </tr></thead><tbody>${body}</tbody></table>`;
 }
 
@@ -217,14 +215,14 @@ $('importBtn').addEventListener('click', async () => {
     let html = `<div class="warnbox" style="background:rgba(52,211,153,.08);border-color:rgba(52,211,153,.35)">`
       + `导入 <b>${esc(r.file)}</b>：新增 <b>${r.added}</b> 张，跳过重复 <b>${r.skipped}</b> 张。`;
     if (r.unknown && r.unknown.length) {
-      html += `<br><br><b>⚠ ${r.unknown.length} 张卡的赛事名对不上已知赛事</b>，已按原样记入：`
+      html += `<br><br><b>⚠ ${r.unknown.length} 张卡的档位对不上已知档位</b>，已按原样记入：`
         + `<pre>${esc(r.unknown.slice(0, 8).join('\n'))}</pre>`
         + `<div class="hint">没有偷偷改成 all —— 台账是收钱的凭据，记错了查不回来。请核对后手工改正。</div>`;
     }
     html += '</div>';
     if (r.cards && r.cards.length) {
       html += '<div class="tablewrap" style="max-height:24vh"><table><thead><tr><th>卡号</th><th>邀请码</th><th>赛事</th></tr></thead><tbody>'
-        + r.cards.map((c) => `<tr><td class="mono">${esc(c.card)}</td><td class="mono">${esc(c.inviteCode)}</td><td>${esc(c.competition)}</td></tr>`).join('')
+        + r.cards.map((c) => `<tr><td class="mono">${esc(c.card)}</td><td class="mono">${esc(c.inviteCode)}</td><td>${esc(c.plan)}</td></tr>`).join('')
         + '</tbody></table></div>';
     }
     $('ledgerResult').innerHTML = html;
@@ -314,7 +312,7 @@ $('vGo').addEventListener('click', async () => {
       + (r.card ? `卡号 <b>${esc(r.card)}</b><br>` : '')
       + (r.machine ? `机器码 <b>${esc(r.machine)}</b><br>` : '')
       + (r.edition ? `版本 <b>${esc(r.edition)}</b><br>` : '')
-      + (r.competition ? `解锁赛事 <b>${esc(r.competition)}</b><br>` : '')
+      + (r.plan ? `档位 <b>${esc(r.plan)}</b><br>` : '')
       + (r.issuedAt ? `签发于 <b>${esc(r.issuedAt)}</b><br>` : '')
       + (r.expireAt ? `到期 <b>${esc(r.expireAt)}</b><br>` : '')
       + (r.buyer ? `买家 <b>${esc(r.buyer)}</b>` : '');

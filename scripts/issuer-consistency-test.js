@@ -103,8 +103,8 @@ if (privPem && clientPub) {
   console.log('  · 私钥不在本机（正常：只该在卖家机上），跳过推导校验');
 }
 
-// ---------------------------------------------------------------- ② 赛事
-console.log('\n=== ② 赛事与定价（三个入口必须同源）===');
+// ---------------------------------------------------------------- ② 档位
+console.log('\n=== ② 时长档位与定价（入口必须同源）===');
 const ids = comps.COMPETITIONS.map((c) => c.id);
 
 /** 从 HTML/JS 里抓 value="xxx" 形式的赛事选项 */
@@ -113,18 +113,23 @@ function optionIds(text, marker) {
   return [...new Set([...seg.matchAll(/value="([a-z_]+)"/g)].map((m) => m[1]))];
 }
 
-const keygenOpts = optionIds(keygenHtml, 'COMPETITION:OPTIONS:START');
-check('keygen 选项含全部赛事', ids.every((id) => keygenOpts.includes(id)),
-  '缺：' + ids.filter((id) => !keygenOpts.includes(id)).join(', '));
-check('keygen 选项含全能包', keygenOpts.includes('all'));
+const planIds = Object.keys(comps.PLANS);
+const keygenOpts = optionIds(keygenHtml, 'PLAN:OPTIONS:START');
+check('keygen 选项含全部档位', planIds.every((id) => keygenOpts.includes(id)),
+  '缺：' + planIds.filter((id) => !keygenOpts.includes(id)).join(', '));
+check('keygen 不残留赛事选项',
+  !keygenOpts.some((v) => ids.includes(v)) && !keygenOpts.includes('all'),
+  '残留：' + keygenOpts.filter((v) => ids.includes(v) || v === 'all').join(', '));
 
 // issuer.js 的下拉是从 comps 生成的，确认它没有再抄一份硬编码列表。
 // ⚠️ 判据是"有没有把赛事 id 写死成字面量"，不是"有没有 value=xxx" ——
 // 后者会连 <option value="all">（全能包，本来就该有）和有效期下拉的
 // value="custom" 一起抓进来，我第一版就误报在这。
-const strayIds = ids.filter((id) => new RegExp(`["'>=]\\s*${id}\\b`).test(issuerJs.replace(/comps\.[A-Za-z.]+/g, '')));
-check('issuer.js 不抄赛事清单（从数据源生成）', strayIds.length === 0, '硬编码：' + strayIds.join(', '));
-check('issuer.js 遍历数据源生成选项', /comps\.COMPETITIONS\.map/.test(issuerJs));
+// year 是旧卡兼容的兜底值，界面里出现它是允许的（issuer.js 的 /api/ledger 用它）
+const strayPlans = planIds.filter((id) => id !== 'year'
+  && new RegExp(`["'>=]\\s*${id}\\b`).test(issuerJs.replace(/comps\.[A-Za-z.]+/g, '')));
+check('issuer.js 不抄档位清单（从数据源生成）', strayPlans.length === 0, '硬编码：' + strayPlans.join(', '));
+check('issuer.js 遍历数据源生成选项', /PLAN_IDS\.map/.test(issuerJs));
 check('issuer.js 读数据源', /require\(['"]\.\.\/src\/main\/competitions['"]\)/.test(issuerJs));
 
 // 价格：HTML 里手抄的必须等于 PRICES
@@ -132,20 +137,22 @@ const htmlPrices = {};
 for (const m of keygenHtml.matchAll(/<option\s+value="([a-z_]+)"[^>]*>[^<]*?¥(\d+)/g)) {
   htmlPrices[m[1]] = Number(m[2]);
 }
-const priceDiff = Object.keys(comps.PRICES).filter((k) => htmlPrices[k] !== comps.PRICES[k]);
-check('keygen 里每个价格都等于数据源 PRICES', priceDiff.length === 0,
-  priceDiff.map((k) => `${k}: ¥${htmlPrices[k]} vs ¥${comps.PRICES[k]}`).join('; '));
+const planPrices = {};
+for (const k of Object.keys(comps.PLANS)) planPrices[k] = comps.PLANS[k].price;
+const priceDiff = Object.keys(planPrices).filter((k) => htmlPrices[k] !== planPrices[k]);
+check('keygen 里每个价格都等于数据源 PLANS', priceDiff.length === 0,
+  priceDiff.map((k) => `${k}: ¥${htmlPrices[k]} vs ¥${planPrices[k]}`).join('; '));
 
 // ---------------------------------------------------------------- ③ 透传
-console.log('\n=== ③ competition 必须透传（否则单赛卡签成全能包）===');
+console.log('\n=== ③ plan 必须透传（否则月卡签成年卡）===');
 const issueCall = issuerJs.slice(issuerJs.indexOf('issue({'), issuerJs.indexOf('issue({') + 500);
-check('issuer.js 把 competition 传给 issue()', /competition:\s*b\.competition/.test(issueCall),
-  '没透传 → 默认 all，卖 ¥39 的单赛卡会给到全能包权限');
+check('issuer.js 把 plan 传给 issue()', /plan:\s*b\.plan/.test(issueCall),
+  '没透传 → 默认 year，卖 ¥29 的月卡会给到年卡权限');
 // ⚠️ 这条断言的是**核心行为**（不传时默认 all），实现已移到 issuer-core.js。
 // 行为本身没变：界面必须堵住它，不能靠核心兜底 —— 见下面那条界面断言。
-check('核心：未传时默认 all（老行为，需被界面堵住）', /normalizeCompetition\(competition\)/.test(coreJs));
-check('界面有赛事下拉', /id="competition"/.test(issuerJs));
-check('签发结果回显赛事与价格', /competitionName/.test(issuerJs) && /price/.test(issuerJs));
+check('核心：未传 plan 时默认 year', /function normalizePlan\(s\)/.test(coreJs));
+check('界面有档位下拉', /id="plan"/.test(issuerJs));
+check('签发结果回显档位与价格', /planLabel/.test(issuerJs) && /price/.test(issuerJs));
 
 // ---------------------------------------------------------------- ④ 台账
 console.log('\n=== ④ 台账列映射（错位会让你看不见发过什么卡）===');
@@ -160,7 +167,7 @@ const ledgerCode = ledgerSeg.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\
 check('找到服务端台账接口', ledgerAt > 0);
 check('台账接口不按数字下标取列', !/[a-z]\[\d\]/i.test(ledgerCode),
   'readLedger() 返回对象数组，按下标取会整体错位');
-check('台账含 competition 字段', /competition:\s*r\.competition/.test(ledgerSeg));
+check('台账含 plan 字段', /plan:\s*r\.plan/.test(ledgerSeg));
 check('台账含邀请码', /inviteCode/.test(ledgerSeg));
 
 // 真实读一遍台账，确认字段能取到（含空台账的健壮性）
@@ -168,34 +175,33 @@ const { readLedger } = require('../tools/issue.js');
 const rows = readLedger();
 check('readLedger() 返回对象数组', rows.every((r) => typeof r === 'object' && 'card' in r));
 if (rows.length) {
-  check('每行都有 competition（旧行按 all 兼容）', rows.every((r) => typeof r.competition === 'string'));
+  check('每行都有 plan（旧行按原值兼容）', rows.every((r) => typeof r.plan === 'string'));
   check('每行卡号能派生邀请码', rows.every((r) => /^\d{6}$/.test(comps.inviteCodeFromCard(r.card))));
 }
 
 // ---------------------------------------------------------------- ⑤ 端到端
-console.log('\n=== ⑤ 端到端：GUI 签的单赛卡，客户端只放行该赛事与该机器 ===');
+console.log('\n=== ⑤ 端到端：签出的时长卡，客户端只放行该机器与该档位 ===');
 if (privPem) {
   const { issue } = require('../tools/issue.js');
   const { verifyCredential } = require('../src/main/license.js');
   const MACHINE = '7E842A70F9986EB7';
 
   const { credential, payload } = issue({
-    machine: MACHINE, days: 30, competition: 'cumcm', buyer: '一致性测试',
+    machine: MACHINE, plan: 'month', buyer: '一致性测试',
   });
 
-  check('签出的 competition = cumcm', payload.competition === 'cumcm', payload.competition);
+  check('签出的 plan = month', payload.plan === 'month', payload.plan);
   check('客户端验签认这张卡', verifyCredential(credential, MACHINE).ok === true,
     '验签失败说明 issuer 与 license 的签名格式已经不一致');
-  // 这两条是商业上的核心保证：卡密绑定机器、按赛事放行
+  // 这两条是商业上的核心保证：卡密绑定机器、时长内放行
   check('换机器码立刻不认（一机一码）',
     verifyCredential(credential, 'AAAAAAAAAAAAAAAA').ok === false);
-  check('该卡只解锁国赛', comps.unlocks(payload.competition, 'cumcm') === true);
-  check('该卡不解锁华为杯', comps.unlocks(payload.competition, 'huawei') === false);
-  check('该卡不解锁大数据赛', comps.unlocks(payload.competition, 'bigdata') === false);
-  check('全能包解锁全部赛事',
-    comps.COMPETITIONS.every((c) => comps.unlocks('all', c.id) === true));
+  check('有效期约 30 天',
+    Math.round((payload.expireAt - payload.issuedAt) / 86400000) === 30,
+    String(Math.round((payload.expireAt - payload.issuedAt) / 86400000)) + ' 天');
+  check('凭证里不再有 competition 字段', payload.competition === undefined);
 
-  // 篡改检测：改了 payload 必须验不过（否则买家可以自己把 cumcm 改成 all）
+  // 篡改检测：改了 payload 必须验不过（否则买家可以自己把 month 改成 year）
   const tampered = credential.replace(/^([^.])/, (m) => (m === 'e' ? 'f' : 'e'));
   check('凭证被改一个字符即验不过', verifyCredential(tampered, MACHINE).ok === false);
 

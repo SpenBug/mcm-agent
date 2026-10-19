@@ -106,7 +106,7 @@ for (const [srcRel, dstRel] of FILES) {
 /* ---- 安全闸：vendor 里绝不能出现私钥或台账 ---- */
 const FORBIDDEN = [
   { re: /-----BEGIN [A-Z ]*PRIVATE KEY-----/, why: '私钥 PEM' },
-  { re: /^card,machine,edition,competition,issuedAt/m, why: '卡密台账表头' },
+  { re: /^card,machine,edition,plan,issuedAt/m, why: '卡密台账表头' },
   { re: /^inviterCode,buyer,competition/m, why: '邀请台账表头' },
 ];
 if (fs.existsSync(VENDOR)) {

@@ -24,6 +24,12 @@
  *
  * 4. **体验版防改系统时间**：记 firstRunAt 和 lastSeenAt（只增不减），
  *    已用时 = max(now, lastSeenAt) - firstRunAt。把时间调回去不会续命。
+ *
+ * 5. **授权只表达时长，不表达赛事**（2026-10 改）。凭证 payload 里带的是
+ *    plan（week / month / year / forever）与 expireAt，没有 competition 字段。
+ *    买了就能用全部功能，到期自然续费 —— 按赛事解锁会让「顺手做一道别的
+ *    赛题」被拦住，且门禁判断要依赖会漂移的赛事日历。
+ *    兼容：早期签发的卡没有 plan 字段，一律按年卡处理（老用户不受影响）。
  */
 
 const crypto = require('node:crypto');
@@ -31,6 +37,17 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { execFileSync } = require('node:child_process');
+
+// 档位表与 planOf 在 competitions.js 里（授权与定价的唯一真源）。
+// 懒 require：纯 Node 测试环境不加载 Electron，而 competitions 无副作用。
+let PLANS = null;
+function plans() {
+  if (!PLANS) PLANS = require('./competitions').PLANS;
+  return PLANS;
+}
+function planOf(payload) {
+  return require('./competitions').planOf(payload);
+}
 
 /** 内嵌公钥 —— 可以进客户端，它只能验签 */
 const PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
@@ -392,8 +409,11 @@ function getLicenseState(userData, { now = Date.now() } = {}) {
         machineDegraded: machine.degraded,
         card: v.payload.card,
         edition: v.payload.edition || 'pro',
-        // 本卡解锁的赛事（旧卡无此字段 → all，兼容已售出的卡）
-        competition: v.payload.competition || 'all',
+        // 时长档位（旧卡无此字段 → 按年卡兼容）
+        plan: planOf(v.payload),
+      planLabel: plans()[planOf(v.payload)].label,
+        // 永久买断：界面据此显示「永久」而不是一个 2099 的日期
+        perpetual: !!(v.payload.perpetual || plans()[planOf(v.payload)].perpetual),
         expireAt: v.payload.expireAt,
         needsRefresh: !!v.expired,      // 过期但还在宽限期 → 该联网复验了
         message: v.expired ? '授权待刷新（宽限期内）' : undefined,

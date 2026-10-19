@@ -185,24 +185,17 @@
 
       <div class="row" style="margin-top:12px">
         <div class="col" style="flex:1 1 300px">
-          <label for="competition">解锁赛事（决定售价与可用范围）</label>
-          <select id="competition">
-            <!-- COMPETITION:OPTIONS:START -->
-            <option value="" selected disabled>请选择解锁的赛事…</option>
-            <option value="all">全能包 —— 解锁全部赛事（¥168）</option>
-            <option value="huawei">华为杯研究生赛（¥79）</option>
-            <option value="mcm">美赛 MCM/ICM（¥79）</option>
-            <option value="cumcm">国赛 CUMCM（¥69）</option>
-            <option value="shuwei">数维杯秋季赛（¥39）</option>
-            <option value="apmcm">亚太赛 APMCM（¥39）</option>
-            <option value="bigdata">MathorCup 大数据赛（¥39）</option>
-            <option value="huashu">华数杯（¥39）</option>
-            <option value="huashu_intl">华数杯国际赛（¥39）</option>
-            <option value="mathorcup">MathorCup（¥29）</option>
-            <option value="others">其他小赛（¥29）</option>
-            <!-- COMPETITION:OPTIONS:END -->
+          <label for="plan">时长档位（决定售价与有效期）</label>
+          <select id="plan">
+            <!-- PLAN:OPTIONS:START -->
+            <option value="" selected disabled>请选择时长档位…</option>
+            <option value="forever">永久买断 —— 永久（¥199）</option>
+            <option value="year">年卡 —— 365 天（¥99）</option>
+            <option value="month">月卡 —— 30 天（¥59）</option>
+            <option value="week">周卡 —— 7 天（¥29）</option>
+            <!-- PLAN:OPTIONS:END -->
           </select>
-          <p class="hint">用户买哪个赛事就选哪个；选了之后他只能在那个赛事模式下用。</p>
+          <p class="hint">买了就能用全部功能，不限赛事；到期自然续费。</p>
         </div>
       </div>
 
@@ -310,15 +303,15 @@ function pretty(m) {
 }
 
 /**
- * 赛事 id → 界面显示名。
+ * 档位 id → 界面显示名。
  * 直接读 <option> 的文案（那份由 scripts/sync-keygen-options.js 从数据源生成），
  * 不再另存一份字典 —— 第三份手抄清单一定会漂移，实测已经漏了 3 个新赛事。
  */
 function compLabel(id) {
-  const v = String(id || 'all');
-  const opt = document.querySelector('#competition option[value="' + v + '"]');
+  const v = String(id || 'year');
+  const opt = document.querySelector('#plan option[value="' + v + '"]');
   if (opt) return opt.textContent.trim();
-  return v === 'all' ? '全能包' : v;   // 台账里可能有已下架赛事的裸 id，原样显示别猜
+  return v;   // 老台账里可能是赛事 id（如 cumcm）或 all，原样显示别猜
 }
 
 /** 到期时间显示。台账里存的是 ISO 字符串，但导入的 CSV 可能是裸时间戳，两种都吃 */
@@ -343,12 +336,12 @@ async function importPublicKey(pem) {
 
 /* ---------- 签发 ---------- */
 
-async function issueCard({ privKey, machine, edition, competition, expireAt, buyer, card }) {
+async function issueCard({ privKey, machine, edition, plan, expireAt, buyer, card }) {
   const issuedAt = Date.now();
   // ⚠️ 字段顺序必须和 tools/issue.js 完全一致 ——
   // JSON.stringify 按插入顺序输出，顺序变了签名字节就变了，客户端验不过。
-  // 顺序：card, machine, edition, competition, expireAt, issuedAt, buyer
-  const payload = { card, machine, edition, competition, expireAt, issuedAt, buyer };
+  // 顺序：card, machine, edition, plan, expireAt, issuedAt, buyer
+  const payload = { card, machine, edition, plan, expireAt, issuedAt, buyer };
 
   const body = strToB64url(JSON.stringify(payload));
   const sig = await crypto.subtle.sign('Ed25519', privKey, new TextEncoder().encode(body));
@@ -508,7 +501,7 @@ function renderLedger() {
     <tr>
       <td class="mono">${r.card}</td>
       <td class="mono">${pretty(r.machine)}</td>
-      <td>${escapeHtml(compLabel(r.competition))}</td>
+      <td>${escapeHtml(compLabel(r.plan))}</td>
       <td>${r.edition}</td>
       <td>${fmtDate(r.expireAt)}</td>
       <td>${r.buyer ? escapeHtml(r.buyer) : '<span style="color:var(--faint)">—</span>'}</td>
@@ -517,7 +510,7 @@ function renderLedger() {
   `).join('');
 
   box.innerHTML = `<table>
-    <thead><tr><th>卡号</th><th>机器码</th><th>赛事</th><th>版本</th><th>到期</th><th>买家</th><th></th></tr></thead>
+    <thead><tr><th>卡号</th><th>机器码</th><th>档位</th><th>版本</th><th>到期</th><th>买家</th><th></th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
 
@@ -563,11 +556,11 @@ $('issue').addEventListener('click', async () => {
   const machine = normalizeMachine($('machine').value);
   if (machine.length !== 16) { flash('机器码应该是 16 位十六进制'); return; }
 
-  // 必须主动选赛事：全能包不再是默认值，空值直接拒签。
-  // 漏选会把 ¥39 的单赛卡签成 ¥168 权限，且台账上看不出来。
+  // 必须主动选档位：空值直接拒签，不默认成年卡 ——
+  // 默认值会把"想签月卡"变成年卡，台账上看不出来。
   // 放在其它必填一起、生成卡号之前 —— 别等到私钥导入完才拦。
-  const competition = $('competition').value;
-  if (!competition) { flash('先选「解锁赛事」'); $('competition').focus(); return; }
+  const plan = $('plan').value;
+  if (!plan) { flash('先选「时长档位」'); $('plan').focus(); return; }
 
   const until = $('until').value;
   let expireAt;
@@ -587,7 +580,7 @@ $('issue').addEventListener('click', async () => {
   try {
     const privKey = await importPrivateKey(pem);
     const { credential, payload } = await issueCard({
-      privKey, machine, edition: $('edition').value, competition, expireAt, buyer, card,
+      privKey, machine, edition: $('edition').value, plan, expireAt, buyer, card,
     });
 
     // 自验：签完立刻确认客户端会认
@@ -604,7 +597,7 @@ $('issue').addEventListener('click', async () => {
 
     const list = readLedger();
     list.push({
-      card, machine, edition: payload.edition, competition: payload.competition,
+      card, machine, edition: payload.edition, plan: payload.plan,
       issuedAt: new Date(payload.issuedAt).toISOString(),
       expireAt: new Date(payload.expireAt).toISOString(),
       buyer, credential,
@@ -617,8 +610,8 @@ $('issue').addEventListener('click', async () => {
     // 这里原先另存了一份 COMP_NAMES 字典（第三份手抄清单），
     // 结果上一轮新增的 bigdata / huashu / huashu_intl 都不在里面，
     // 签完只显示裸 id。手抄清单迟早漂移，能不留就不留。
-    const compOpt = $('competition').selectedOptions[0];
-    const compName = compOpt ? compOpt.textContent.trim() : competition;
+    const compOpt = $('plan').selectedOptions[0];
+    const compName = compOpt ? compOpt.textContent.trim() : plan;
     const inviteCode = card.replace(/\D/g, '').slice(-6);
     $('outBox').innerHTML = `
       <div class="out">
@@ -637,8 +630,8 @@ $('issue').addEventListener('click', async () => {
     $('copyCred').addEventListener('click', () => copyText(credential));
     $('copyMsg').addEventListener('click', () => copyText(
       '你的专属卡密（只认你这台电脑）：\n\n' + credential +
-      '\n\n解锁赛事：' + compName +
-      '\n用法：打开阿一古数模 → 顶部「赛事」面板选好要参加的赛事 → 把上面整段粘进激活框 → 点「解锁」。\n' +
+      '\n\n时长档位：' + compName +
+      '\n用法：打开阿一古数模 → 把上面整段粘进激活框 → 点「解锁」。买了就能用全部功能。\n' +
       '有效期到 ' + new Date(expireAt).toISOString().slice(0, 10) + '。\n' +
       '换电脑请找我重新签发。'
     ));
@@ -653,10 +646,10 @@ $('issue').addEventListener('click', async () => {
 $('exportCsv').addEventListener('click', () => {
   const list = readLedger();
   if (!list.length) { flash('台账是空的'); return; }
-  const head = ['卡号', '机器码', '赛事', '版本', '签发时间', '到期时间', '买家', '卡密'];
+  const head = ['卡号', '机器码', '档位', '版本', '签发时间', '到期时间', '买家', '卡密'];
   const esc = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
   const csv = '\uFEFF' + [head.map(esc).join(',')]
-    .concat(list.map((r) => [r.card, r.machine, r.competition || 'all', r.edition, r.issuedAt, r.expireAt, r.buyer, r.credential].map(esc).join(',')))
+    .concat(list.map((r) => [r.card, r.machine, r.plan || 'year', r.edition, r.issuedAt, r.expireAt, r.buyer, r.credential].map(esc).join(',')))
     .join('\r\n');
 
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
@@ -685,7 +678,7 @@ $('csvFile').addEventListener('change', async (e) => {
     const incoming = rows.slice(1).map((_, i) => ({
       card: pick(['card', '卡号'], i),
       machine: pick(['machine', '机器码'], i),
-      competition: pick(['competition', '赛事'], i) || 'all',
+      plan: pick(['plan', '档位', 'competition', '赛事'], i) || 'year',
       edition: pick(['edition', '版本'], i) || 'pro',
       issuedAt: pick(['issuedat', '签发时间'], i),
       expireAt: pick(['expireat', '到期时间'], i),

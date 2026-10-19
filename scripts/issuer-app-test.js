@@ -96,17 +96,17 @@ const comps = require(path.join(VENDOR, 'competitions'));
 const license = require(path.join(VENDOR, 'license'));
 const core = createIssuer({ dataDir: tmp, comps, license });
 
-check('vendor 的 core 能解析同目录依赖', Array.isArray(comps.COMPETITIONS) && comps.COMPETITIONS.length > 0);
+check('vendor 的 core 能解析同目录依赖', Object.keys(comps.PLANS).length > 0);
 check('数据目录被采纳（不是仓库目录）', core.dataDir === tmp, core.dataDir);
 check('台账落在数据目录', core.ledgerPath === path.join(tmp, 'issued.csv'), core.ledgerPath);
 
 const M = '7E842A70F9986EB7';
-const r = core.issue({ machine: M, days: 30, competition: 'cumcm', buyer: '应用测试' });
+const r = core.issue({ machine: M, plan: 'month', buyer: '应用测试' });
 check('签发成功', /^MCM-\d{4}-\d{4}$/.test(r.payload.card), r.payload.card);
-check('价格取自数据源', r.price === comps.PRICES.cumcm, `${r.price} vs ${comps.PRICES.cumcm}`);
+check('价格取自数据源', r.price === comps.PLANS.month.price, `${r.price} vs ${comps.PLANS.month.price}`);
 check('返回邀请码', /^\d{6}$/.test(r.inviteCode), r.inviteCode);
 check('台账写入', core.readLedger().length === 1, String(core.readLedger().length));
-check('列映射正确', core.readLedger()[0].competition === 'cumcm');
+check('列映射正确', core.readLedger()[0].plan === 'month', core.readLedger()[0].plan);
 
 if (hasRealKey) {
   check('本机验签通过', core.verify(r.credential, M).ok === true, core.verify(r.credential, M).why);
@@ -133,13 +133,13 @@ check('非法邀请码被拒', (() => {
 
 console.log('\n=== ⑦ 导入解析与导出往返 ===');
 const csv = '卡号,机器码,版本,赛事,签发时间,到期时间,买家,备注\n'
-  + 'MCM-2026-0009,7E842A70F9986EB7,pro,华数杯,2026-10-01,2027-10-01,客户甲,\n'
-  + 'MCM-2026-0010,7E842A70F9986EB7,pro,不存在的赛,2026-10-02,2027-10-02,客户乙,\n';
+  + 'MCM-2026-0009,7E842A70F9986EB7,pro,永久买断,2026-10-01,2027-10-01,客户甲,\n'
+  + 'MCM-2026-0010,7E842A70F9986EB7,pro,终身卡,2026-10-02,2027-10-02,客户乙,\n';
 const parsed = core.parseImportCsv(csv, { existingCards: new Set(core.readLedger().map((x) => x.card)) });
 check('解析出 2 行', parsed.rows.length === 2, String(parsed.rows.length));
-check('中文赛事名能认出', parsed.rows[0].competition === 'huashu', parsed.rows[0].competition);
-check('未知赛事不偷偷改成 all', parsed.rows[1].competition === '不存在的赛' && parsed.unknown.length === 1,
-  `${parsed.rows[1].competition} / unknown=${parsed.unknown.length}`);
+check('中文档位名能认出', parsed.rows[0].plan === 'forever', parsed.rows[0].plan);
+check('未知档位不偷偷改成 year', parsed.rows[1].plan === '终身卡' && parsed.unknown.length === 1,
+  `${parsed.rows[1].plan} / unknown=${parsed.unknown.length}`);
 core.importRows(parsed.rows);
 check('导入后台账 3 行', core.readLedger().length === 3, String(core.readLedger().length));
 check('中文表头导出', core.ledgerToCsvZh().startsWith('卡号,机器码'));
