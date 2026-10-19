@@ -1020,9 +1020,8 @@
    * 对他真正卡住的那一步（通常是下一步该干什么）毫无提示。
    * 按优先级只说最要紧的一件事。
    *
-   * ⚠️ 赛事名取自 compState（主进程从 competitions.js 拿的同一份数据），
-   * 不在这里写"国赛该说什么、美赛该说什么"的映射表 ——
-   * 那会是第五份手抄清单，改了赛事就漂移（本轮已经栽过四次）。
+   * ⚠️ 赛事名不再从界面取 —— 赛事日历面板已撤掉，placeholder 只说
+   * 最要紧的下一步，不引用赛事数据。
    */
   function updatePlaceholder() {
     const el = $('input');
@@ -1033,10 +1032,7 @@
     } else if (state.materialCount > 0) {
       ph = `已收到 ${state.materialCount} 项材料。说明要解决什么问题、出什么成果（输入 @{ 可引用材料）`;
     } else {
-      const cur = compState?.current && (compState.list || []).find((c) => c.id === compState.current);
-      ph = cur
-        ? `给「${cur.name}」跑一道题：说明要解决什么（输入 @{ 可引用赛题/数据，或先拖材料进对应槽位）`
-        : '描述你的题目或任务，例如：把这道题做完整流程，论文出 Word 版（输入 @{ 可引用材料）';
+      ph = '描述你的题目或任务，例如：把这道题做完整流程，论文出 Word 版（输入 @{ 可引用材料）';
     }
     if (el.placeholder !== ph) el.placeholder = ph;
   }
@@ -1050,20 +1046,14 @@
 
   /**
    * 组装候选来源。全部取自已有的界面状态，不新增 IPC：
-   * 材料来自 refreshSlots 用的同一个 input.list，赛事来自 compState，模型来自 providers。
+   * 材料来自 refreshSlots 用的同一个 input.list，模型来自 providers。
    */
   function buildRefSources() {
     const groups = [];
-    const catLabels = { 赛题: '赛题材料', 规范: '格式规范', 模板: '论文模板', 数据: '赛题数据' };
     for (const key of ['赛题', '规范', '模板', '数据']) {
       const files = (state.materialFiles[key] || []).map((f) => ({ name: f.name }));
       if (files.length) groups.push({ cat: key, items: files, label: catLabels[key] });
     }
-    const comps = (compState?.list || []).map((c) => ({
-      name: c.name,
-      hint: c.status === 'open' ? '报名中' : c.status === 'running' ? '进行中' : (c.statusLabel || ''),
-    }));
-    if (comps.length) groups.push({ cat: '赛事', items: comps, label: '赛事' });
 
     const models = [];
     if (state.config?.model) models.push({ name: state.config.model, hint: '当前使用' });
@@ -1573,7 +1563,7 @@
     { t: '从赛题做到论文', d: '材料我分好了，走完整五步，论文出 Word 版' },
     { t: '先只做题目分析', d: '拆子问题、选模型、写假设和符号表，先看看思路对不对' },
     { t: '只画竞赛图', d: '技术路线图 + 各子问题流程图，要可编辑的源文件' },
-    { t: '交卷前自检', d: '论文写完了，按十二闸过一遍，告诉我哪里必须改' },
+    { t: '交卷前自检', d: '论文写完了，按八道闸过一遍，告诉我哪里必须改' },
   ];
 
   /** 把 query 拆成字符，看能否按顺序在 text 里找到（子序列模糊匹配） */
@@ -1824,10 +1814,15 @@
     const el = $('sideLicense');
     if (!el) return;
     if (licenseState?.mode === 'activated' && licenseState.card) {
-      const exp = licenseState.expireAt
-        ? new Date(licenseState.expireAt).toISOString().slice(0, 10)
-        : '—';
-      el.innerHTML = `已授权 <b>${esc(licenseState.card)}</b><br>有效期至 ${esc(exp)}`;
+      // 永久买断的 expireAt 是 2099 哨兵值，直接显示日期会很怪 ——
+      // 主进程带回 perpetual 标，据此显示「永久」。
+      const exp = licenseState.perpetual
+        ? '永久'
+        : (licenseState.expireAt
+          ? new Date(licenseState.expireAt).toISOString().slice(0, 10)
+          : '—');
+      const planTxt = licenseState.planLabel ? `${esc(licenseState.planLabel)} · ` : '';
+      el.innerHTML = `已授权 <b>${esc(licenseState.card)}</b><br>${planTxt}有效期至 ${esc(exp)}`;
       el.classList.remove('hidden');
     } else if (licenseState?.mode === 'trial') {
       el.textContent = '体验版 · 未激活';
@@ -1895,193 +1890,6 @@
     $('btnContact')?.addEventListener('click', openQrModal);
     $('qrModalClose')?.addEventListener('click', closeQrModal);
     $('qrModalMask')?.addEventListener('click', closeQrModal);
-  }
-
-  /* ================= 赛事日历面板 =================
-   * 数据全部来自主进程（competitions:list）—— 状态与倒计时由主进程按
-   * 当前时间推导，渲染层只负责画，避免两边时钟/时区算得不一样。
-   */
-
-  let compState = null;      // { list, current, prices, license }
-  let compTicker = null;
-
-  /** 毫秒 → "43 天 5 小时" / "5 小时 12 分" / "12 分 30 秒" */
-  function fmtCountdown(ms) {
-    const t = Math.max(0, Math.floor(ms / 1000));
-    const d = Math.floor(t / 86400);
-    const h = Math.floor((t % 86400) / 3600);
-    const m = Math.floor((t % 3600) / 60);
-    const s = t % 60;
-    if (d > 0) return `${d} 天 ${h} 小时`;
-    if (h > 0) return `${h} 小时 ${m} 分`;
-    if (m > 0) return `${m} 分 ${s} 秒`;
-    return `${s} 秒`;
-  }
-
-  /** 时间戳 → "2026-11-20 09:00"（本地时区） */
-  function fmtLocal(ts) {
-    if (!ts) return '待公布';
-    const d = new Date(ts);
-    const p = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-  }
-
-  /**
-   * 赛事是否已被当前授权解锁。
-   * 体验期（trial）不做赛事限制 —— 试用可以试所有赛事，这样用户才敢买。
-   */
-  function compUnlocked(c) {
-    const lic = compState?.license;
-    if (!lic || lic.mode === 'trial') return true;
-    if (lic.mode !== 'activated') return false;
-    const owned = lic.competition;
-    return !owned || owned === 'all' || owned === c.id;
-  }
-
-  function renderCompetitions() {
-    const host = $('cmpList');
-    if (!host || !compState) return;
-    const { list, current } = compState;
-    host.innerHTML = '';
-
-    for (const c of list) {
-      const unlocked = compUnlocked(c);
-      const isCurrent = c.id === current;
-      const el = document.createElement('div');
-      el.className = 'cmp-item' + (isCurrent ? ' active' : '');
-
-      // 倒计时只在"报名中"显示；进行中/已结束/待公布都不显示
-      const countdown = c.status === 'open' && c.countdownMs > 0
-        ? `<span class="cmp-count" data-start="${c.startAt}">距开赛 ${fmtCountdown(c.countdownMs)}</span>`
-        : '';
-
-      const timeLine = c.startAt
-        ? `比赛 <b>${fmtLocal(c.startAt)}</b> → <b>${fmtLocal(c.endAt)}</b>`
-          + (c.regDeadline ? `<br>报名截止 <b>${fmtLocal(c.regDeadline)}</b>` : '')
-          + (c.paperDeadline ? `　论文截止 <b>${fmtLocal(c.paperDeadline)}</b>` : '')
-        : `时间待官方公布`;
-
-      el.innerHTML = `
-        <div class="cmp-row1">
-          <span class="cmp-name">${esc(c.name)}</span>
-          <span class="cmp-status ${c.status}">${esc(c.statusText)}</span>
-          ${countdown}
-        </div>
-        <div class="cmp-full">${esc(c.fullName)}</div>
-        <div class="cmp-time">${timeLine}${c.fee ? `　官方报名费 <b>¥${c.fee}</b>/队` : ''}</div>
-        ${c.note ? `<div class="cmp-note">${esc(c.note)}</div>` : ''}
-        <div class="cmp-row2">
-          <span class="cmp-price">¥${c.price}</span>
-          <span class="cmp-lock ${unlocked ? 'ok' : 'no'}">${unlocked ? '已解锁' : '未解锁'}</span>
-          <span class="cmp-spacer"></span>
-          <button class="cmp-btn2" data-open="${esc(c.url)}">官网</button>
-          ${isCurrent
-            ? '<button class="cmp-btn2" disabled>当前赛事</button>'
-            : `<button class="cmp-btn2 primary" data-set="${esc(c.id)}">设为当前赛事</button>`}
-        </div>
-      `;
-      host.appendChild(el);
-    }
-
-    // 绑定按钮（用事件委托更省，但这里条目少，逐条绑更直观）
-    host.querySelectorAll('[data-set]').forEach((b) => {
-      b.addEventListener('click', async () => {
-        const r = await api.competitions.setCurrent(b.dataset.set);
-        if (r.ok) {
-          toast('已切换当前赛事');
-          await refreshCompetitions();
-          refreshLicense();   // 赛事变了 → 门禁可能变化
-        } else {
-          toast(r.error || '切换失败', 'err');
-        }
-      });
-    });
-    host.querySelectorAll('[data-open]').forEach((b) => {
-      b.addEventListener('click', async () => {
-        const r = await api.openExternal(b.dataset.open);
-        if (!r || !r.ok) toast((r && r.error) || '打不开链接', 'err');
-      });
-    });
-  }
-
-  /** 倒计时每秒重算 —— 本地推算，不每秒打 IPC */
-  function startCompTicker() {
-    if (compTicker) clearInterval(compTicker);
-    compTicker = setInterval(() => {
-      const nodes = document.querySelectorAll('.cmp-count[data-start]');
-      if (!nodes.length) return;
-      let anyOpen = false;
-      nodes.forEach((n) => {
-        const left = Number(n.dataset.start) - Date.now();
-        if (left > 0) {
-          n.textContent = '距开赛 ' + fmtCountdown(left);
-          anyOpen = true;
-        } else {
-          // 刚好跨过开赛时刻：状态需要重算，交给主进程
-          n.textContent = '即将开赛';
-          refreshCompetitions();
-        }
-      });
-      $('btnCompetitions')?.classList.toggle('urgent', anyOpen);
-    }, 1000);
-  }
-
-  async function refreshCompetitions() {
-    try {
-      compState = await api.competitions.list();
-    } catch {
-      compState = null;
-    }
-    const btn = $('btnCompetitions');
-    if (btn && compState) {
-      const soon = compState.list.find((c) => c.status === 'open' && c.countdownMs > 0);
-      btn.classList.toggle('urgent', Boolean(soon));
-      // 按钮上带出最近一场的天数，不用点开就知道时间
-      const label = btn.querySelector('span');
-      if (label) {
-        label.textContent = soon
-          ? `${soon.name} ${Math.ceil(soon.countdownMs / 86400000)}天`
-          : '赛事';
-      }
-    }
-    renderCompetitions();
-    // compState 是 placeholder 取赛事名的唯一来源，只在这里被赋值，
-    // 所以挂这一处就覆盖"启动 / 打开面板 / 切换赛事"三条路径
-    updatePlaceholder();
-    startCompTicker();
-  }
-
-  function openCompetitions() {
-    $('cmpMask')?.classList.remove('hidden');
-    $('cmpPanel')?.classList.add('open');
-    refreshCompetitions();
-  }
-
-  function closeCompetitions() {
-    $('cmpMask')?.classList.add('hidden');
-    $('cmpPanel')?.classList.remove('open');
-  }
-
-  function bindCompetitionUI() {
-    $('btnCompetitions')?.addEventListener('click', openCompetitions);
-    $('cmpClose')?.addEventListener('click', closeCompetitions);
-    $('cmpMask')?.addEventListener('click', closeCompetitions);
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && $('cmpPanel')?.classList.contains('open')) closeCompetitions();
-    });
-    // AI 声明草稿：按当前赛事规定写到工作区 reports/
-    $('cmpAiDraft')?.addEventListener('click', async () => {
-      const r = await api.aiDeclare.draft({});
-      if (r && r.ok) {
-        toast(`已生成：${r.file}（用途与提示方式请自行核实填写）`);
-        await refreshFiles();
-      } else if (r && r.licenseBlocked) {
-        closeCompetitions();
-        refreshLicense();
-      } else {
-        toast((r && r.error) || '生成失败', 'err');
-      }
-    });
   }
 
   /* ================= 邀请码 =================
@@ -2766,7 +2574,7 @@
 
     // 引用 chip 与候选面板。
     // 绑定时机无所谓：候选是**按下 @{ 那一刻**才现取的（见 buildRefSources），
-    // 它读的 state.providers / compState / state.materialFiles 都在 init 流程里
+    // 它读的 state.providers / state.materialFiles 都在 init 流程里
     // 各自填充，一定早于用户可能输入 @{ 的时刻。
     bindRefsUI();
 
@@ -2775,7 +2583,7 @@
     $('btnWorkspace').addEventListener('click', async () => {
       const ws = await api.workspace.choose();
       if (ws) {
-        state.workspace = ws;
+    // 它读的 state.providers / state.materialFiles 都在 init 流程里
         state.messages = [];
         updateHeader();
         newSession();
@@ -2793,11 +2601,20 @@
     // 未处理的 rejection 会静默中断后面的初始化
     refreshLicense().catch((e) => console.error('[license] 状态刷新失败：', e));
 
-    /* ---- 赛事日历 ---- */
-    bindCompetitionUI();
-    refreshCompetitions().catch((e) => console.error('[competitions] 刷新失败：', e));
-
-    /* ---- 邀请码 ---- */
+    /* ---- AI 声明草稿 ---- */
+    // 按当前赛事规定把《AI工具使用详情》草稿写到工作区 reports/。
+    // 赛事日历面板撤掉后，这个入口挪到侧栏常驻。
+    $('btnAiDraft')?.addEventListener('click', async () => {
+      const r = await api.aiDeclare.draft({});
+      if (r && r.ok) {
+        toast(`已生成：${r.file}（用途与提示方式请自行核实填写）`);
+        await refreshFiles();
+      } else if (r && r.licenseBlocked) {
+        refreshLicense();
+      } else {
+        toast((r && r.error) || '生成失败', 'err');
+      }
+    });
     bindInviteUI();
     refreshInvite().catch((e) => console.error('[invite] 刷新失败：', e));
 

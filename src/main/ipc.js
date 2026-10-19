@@ -189,16 +189,6 @@ function registerIpc(getWindow) {
 
 
   /**
-   * 当前赛事 id：用户在赛事面板选定的优先；没选 → 最近一场报名中的；
-   * 都没有 → null（表示"当前无指定赛事"，不做赛事级门禁）。
-   */
-  function currentCompetitionId() {
-    const cfg = readConfig();
-    if (cfg.currentCompetition && comps.get(cfg.currentCompetition)) return cfg.currentCompetition;
-    return comps.defaultCurrent();
-  }
-
-  /**
    * 授权门禁。
    *
    * ⚠️ 这是**多处埋点**中的一处 —— 只在校验一个地方，改一行前端就绕过去了。
@@ -207,32 +197,20 @@ function registerIpc(getWindow) {
    *
    * 但 license:* 和 config:* 必须放行 —— 否则用户连激活和配置都做不到。
    *
-   * 两层检查：
-   *   ① 模式：体验中/已激活 放行，expired/none 拦截；
-   *   ② 赛事：已激活的卡只解锁 competition 字段指定的赛事（all 或旧卡=全部），
-   *      当前赛事没解锁 → 拦截并给出该赛事价格与切换提示。
-   *      体验期**不做赛事限制**（试用可试所有赛事）。
+   * 一层检查：模式。体验中 / 已激活放行，expired / none 拦截。
+   * 2026-10 起授权改成时长制（周/月/季/年卡），**不再有赛事维度** ——
+   * 买了就能用全部功能，到期续费即可。
    */
   function licenseBlocked() {
     const st = license.getLicenseState(getUserDataDir());
     if (st.mode === 'expired' || st.mode === 'none') {
-      return { blocked: true, mode: st.mode, error: '体验已结束。激活后即可继续使用。' };
-    }
-
-    let comp = null;
-    if (st.mode === 'activated') {
-      const curId = currentCompetitionId();
-      if (curId && !comps.unlocks(st.competition, curId)) {
-        const c = comps.get(curId);
-        comp = { id: c.id, name: c.name, price: c.price, bundlePrice: comps.PRICES.all };
-        return {
-          blocked: true,
-          mode: st.mode,
-          competition: comp,
-          error: `当前赛事「${c.name}」未解锁（¥${c.price}）。`
-            + `请在顶部「赛事」面板切换到已解锁的赛事，或购买本赛事卡密；全能包 ¥${comps.PRICES.all}。`,
-        };
-      }
+      return {
+        blocked: true,
+        mode: st.mode,
+        error: st.mode === 'expired'
+          ? '授权已到期。续费后即可继续使用。'
+          : '体验已结束。激活后即可继续使用。',
+      };
     }
 
     // 未拦截时把完整授权状态带回 —— 调用方（如体验版打水印）不用再算一遍
@@ -294,47 +272,10 @@ function registerIpc(getWindow) {
       return { ok: false, error: '卡密无效，或不是给这台电脑签发的。请核对后重试，或联系客服。' };
     }
     license.writeState(ud, { credential });
-    // 这张卡解锁的是指定赛事 → 自动把"当前赛事"切过去，避免激活后立刻被赛事门禁拦住
-    const competition = v.payload.competition || 'all';
-    if (competition !== 'all' && comps.get(competition)) {
-      writeConfig({ currentCompetition: competition });
-    }
-    console.log('[license] 激活成功：' + v.payload.card + '  赛事=' + competition + '  机器码=' + machine.code);
+    // 授权只表时长：激活即全功能可用，不需要再记任何赛事状态
+    console.log('[license] 激活成功：' + v.payload.card
+      + '  档位=' + comps.planOf(v.payload) + '  机器码=' + machine.code);
     return { ok: true, ...license.getLicenseState(ud) };
-  });
-
-  /* ---------------- 赛事日历 ---------------- */
-
-  /**
-   * 赛事列表：状态与倒计时由主进程按当前时间推导（渲染层不自己算，
-   * 免得时区/时钟差异两边算得不一样）。
-   * 带出当前赛事、默认当前赛事与价目表，渲染层一次拿全。
-   */
-  ipcMain.handle('competitions:list', () => {
-    const st = license.getLicenseState(getUserDataDir());
-    const list = comps.list();
-    const current = currentCompetitionId();
-    return {
-      ok: true,
-      list,
-      current,
-      defaultCurrent: comps.defaultCurrent(),
-      prices: comps.PRICES,
-      license: {
-        mode: st.mode,
-        competition: st.competition || null,   // null = 未激活（体验期）
-        remainingText: st.remainingText,
-        card: st.card,
-      },
-    };
-  });
-
-  /** 设为当前赛事（决定门禁用哪一场校验解锁） */
-  ipcMain.handle('competition:setCurrent', (_e, id) => {
-    const c = comps.get(id);
-    if (!c) return { ok: false, error: '未知赛事' };
-    writeConfig({ currentCompetition: id });
-    return { ok: true, current: id };
   });
 
   /**
@@ -369,7 +310,8 @@ function registerIpc(getWindow) {
     const g = licenseBlocked();
     if (g.blocked) return { ok: false, licenseBlocked: true, error: g.error };
     const ai = require('./agent/ai-declare');
-    const compId = currentCompetitionId();
+    // 赛事只用来选 AI 声明的措辞口径，与授权无关
+    const compId = readConfig().currentCompetition || comps.defaultCurrent();
     const text = ai.buildDetailDraft({
       competition: compId,
       tool: payload?.tool,

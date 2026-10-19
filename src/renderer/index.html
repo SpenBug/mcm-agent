@@ -67,11 +67,6 @@
         <span class="badge" id="modelBadge">未配置模型</span>
         <!-- 体验倒计时：到期后由 lockMask 接管，这个徽章隐藏 -->
         <span class="badge trial hidden" id="trialBadge" title="体验版剩余时间">体验中</span>
-        <!-- 赛事日历：顶栏按钮 + 展开面板，后台按当前赛事做授权门禁 -->
-        <button id="btnCompetitions" class="cmp-btn" type="button" title="赛事与解锁">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="15" rx="2"/><path d="M3 9h18M9 3v6"/></svg>
-          <span>赛事</span>
-        </button>
         <!-- 命令面板入口：做成搜索框的样子，鼠标用户能发现、键盘用户直接 Ctrl+K -->
         <button class="cmdk-trigger" id="btnCmdk" type="button" title="打开命令面板">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
@@ -110,6 +105,11 @@
         <button class="sf-invite" type="button" id="btnInvite" title="邀请同学，双方都有好处">
           <span class="sfi-ico">🎁</span>
           <span class="sfi-txt">邀请有礼<em id="sfInviteCode">······</em></span>
+        </button>
+        <!-- AI 使用声明草稿：原在赛事日历面板里，面板撤掉后挪到侧栏常驻 -->
+        <button class="sf-declare" type="button" id="btnAiDraft" title="按当前赛事规定生成《AI工具使用详情》草稿到 reports/">
+          <span class="sfi-ico">📝</span>
+          <span class="sfi-txt">AI 声明草稿</span>
         </button>
         <button class="sf-contact" type="button" id="btnContact" title="点开扫码加我">
           <div class="sf-line">使用问题 / 购买找</div>
@@ -241,26 +241,6 @@
       </div>
     </div>
 
-    <!-- 赛事日历面板（顶栏 ▶ 赛事） -->
-    <div class="cmp-mask hidden" id="cmpMask"></div>
-    <div class="cmp-panel" id="cmpPanel">
-      <div class="cmp-head">
-        <div>
-          <h2>赛事日历</h2>
-          <p class="cmp-sub">比赛时间与状态由主进程按官方信息实时推导；下方按钮可切换所购赛事。</p>
-        </div>
-        <button class="icon-btn cmp-close" id="cmpClose" type="button">✕</button>
-      </div>
-      <div class="cmp-list" id="cmpList"></div>
-      <div class="cmp-foot">
-        <p>顶栏「赛事」按钮也能打开本面板。</p>
-        <p>按比赛期间成稿、按赛事定价；赛事之后的卡可到客服换全能包（¥168）。</p>
-        <div class="cmp-foot-btns">
-          <button class="cmp-btn2" id="cmpAiDraft" type="button">生成 AI 声明草稿</button>
-          <span class="cmp-foot-hint">按当前赛事规定生成到 reports/；用途与提示方式请自行核实填写</span>
-        </div>
-      </div>
-    </div>
 
     <!-- 邀请码面板：我的邀请码 + 规则（显眼展示，方便截图分享） -->
     <div class="inv-mask hidden" id="invMask"></div>

@@ -434,52 +434,35 @@ async function runSmokeBody(win, logs) {
     `);
     console.log('===运行环境面板===');
     console.log(envDom);
-
-    // 赛事日历面板：验证状态/倒计时/解锁渲染，以及"设为当前赛事"真的落库
-    const cmpDom = await win.webContents.executeJavaScript(`
+    // 侧栏 AI 声明草稿按钮：面板撤掉后它是唯一入口，验证能点、能落到工作区
+    const declareDom = await win.webContents.executeJavaScript(`
       (async () => {
-        document.getElementById('cmpMask')?.classList.add('hidden');
-        document.getElementById('btnCompetitions')?.click();
-        await new Promise(r => setTimeout(r, 900));
-        const items = [...document.querySelectorAll('.cmp-item')];
-        const cur = await window.mcm.competitions.list();
+        const btn = document.getElementById('btnAiDraft');
+        const r = btn ? await window.mcm.aiDeclare.draft({}) : { ok: false, error: "按钮不在" };
         return JSON.stringify({
-          open: document.getElementById('cmpPanel')?.classList.contains('open'),
-          count: items.length,
-          statuses: items.map(i => (i.querySelector('.cmp-status')||{}).textContent).filter(Boolean),
-          hasCountdown: items.some(i => i.querySelector('.cmp-count')),
-          hasSetBtn: items.some(i => i.querySelector('[data-set]')),
-          current: cur.current,
-          defaultCurrent: cur.defaultCurrent,
-          prices: cur.prices,
-          licenseComp: cur.license?.competition,
+          hasBtn: !!btn,
+          ok: r.ok,
+          file: r.file || "",
+          noPanel: !document.getElementById("cmpPanel"),
+          noBtnCompetitions: !document.getElementById("btnCompetitions"),
         });
       })()
     `);
-    console.log('===赛事日历面板===');
-    console.log(cmpDom);
-    const cmp = JSON.parse(cmpDom);
-    const cmpChecks = [
-      ['面板可打开', cmp.open === true],
-      ['渲染出赛事条目', cmp.count >= 5, cmp.count + ' 条'],
-      ['状态徽标已渲染', cmp.statuses.length === cmp.count],
-      ['报名中的赛事有倒计时', cmp.hasCountdown === true],
-      ['有「设为当前赛事」按钮', cmp.hasSetBtn === true],
-      // 2026-10-08：最近一场未开赛的是 MathorCup 大数据赛（10-23），比数维杯（11-20）更早
-      ['默认当前赛事 = 最近一场未开赛的', cmp.current === 'bigdata', String(cmp.current)],
-      ['价目表带回（国赛 ¥69）', cmp.prices?.cumcm === 69, String(cmp.prices?.cumcm)],
-      ['全能包 ¥168', cmp.prices?.all === 168, String(cmp.prices?.all)],
-      ['39 档统一（大数据/华数杯/亚太）',
-        cmp.prices?.bigdata === 39 && cmp.prices?.huashu === 39 && cmp.prices?.apmcm === 39,
-        `${cmp.prices?.bigdata}/${cmp.prices?.huashu}/${cmp.prices?.apmcm}`],
-      ['新赛事已上架（10 项）', cmp.count === 10, String(cmp.count)],
+    console.log('===AI 声明草稿===');
+    console.log(declareDom);
+    const dc = JSON.parse(declareDom);
+    const declareChecks = [
+      ['侧栏按钮在', dc.hasBtn === true],
+      ['赛事面板已撤掉', dc.noPanel === true],
+      ['顶栏赛事按钮已撤掉', dc.noBtnCompetitions === true],
+      ['草稿能生成到 reports/', dc.ok === true, dc.file || dc.error || ''],
     ];
-    let cmpPass = 0;
-    for (const [name, ok, detail] of cmpChecks) {
+    let declarePass = 0;
+    for (const [name, ok, detail] of declareChecks) {
       console.log(`${ok ? '✓' : '✗'} ${name}${detail ? `  [${detail}]` : ''}`);
-      if (ok) cmpPass += 1;
+      if (ok) declarePass += 1;
     }
-    console.log(`赛事面板：${cmpPass}/${cmpChecks.length} 通过`);
+    console.log(`AI 声明草稿：${declarePass}/${declareChecks.length} 通过`);
 
     // 品牌与邀请码：改名 / 马头图标 / 花字标语 / 邀请面板
     const brandDom = await win.webContents.executeJavaScript(`

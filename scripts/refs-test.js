@@ -131,10 +131,9 @@ console.log('\n=== ⑧ filterCandidates ===');
   const sources = [
     { cat: '赛题', items: [{ name: '2024A.pdf' }, { name: '2024B.pdf' }] },
     { cat: '数据', items: [{ name: '附件1.xlsx' }] },
-    { cat: '赛事', items: [{ name: '国赛 CUMCM' }] },
   ];
-  check('空 query 列全部', R.filterCandidates('', sources).length === 4);
-  check('按类别过滤', R.filterCandidates('赛', sources).every((c) => c.cat === '赛题' || c.cat === '赛事'));
+  check('空 query 列全部', R.filterCandidates('', sources).length === 3);
+  check('按类别过滤', R.filterCandidates('赛', sources).every((c) => c.cat === '赛题'));
   check('只列赛题', R.filterCandidates('赛题/', sources).length === 2);
   check('按名称片段过滤', R.filterCandidates('赛题/2024B', sources).length === 1);
   check('名称匹配大小写不敏感', R.filterCandidates('数据/附件', sources).length === 1);
