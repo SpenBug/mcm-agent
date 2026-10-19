@@ -5,7 +5,7 @@ const path = require('node:path');
 const { ipcMain, dialog, shell } = require('electron');
 
 const { PROVIDERS, readConfig, writeConfig, publicConfig } = require('./store');
-const { testConnection } = require('./agent/llm');
+const { testConnection, listModels } = require('./agent/llm');
 const { runAgent } = require('./agent/loop');
 const { buildSystemPrompt } = require('./agent/prompt');
 const sessionTitle = require('./agent/session-title');
@@ -356,6 +356,29 @@ function registerIpc(getWindow) {
       return await testConnection(cfg);
     } catch (err) {
       return { ok: false, error: err.message };
+    }
+  });
+
+  /**
+   * 拉取模型列表（设置页的「获取模型」按钮）。
+   *
+   * baseUrl / apiKey 可以用界面上未保存的值覆盖 —— 用户往往是先填好
+   * 地址和 Key 就想去拉列表，还没点保存。
+   * key 没填时退回已保存的那个（和 config:test 一致的处理）。
+   */
+  ipcMain.handle('config:listModels', async (_e, override) => {
+    const cfg = { ...readConfig(), ...(override || {}) };
+    if (!cfg.apiKey) cfg.apiKey = readConfig().apiKey;
+    if (!cfg.baseUrl) return { ok: false, reason: '先填 API 地址（Base URL）' };
+    try {
+      const r = await listModels(cfg);
+      // 顺带把拉到的列表缓存进配置：断网时设置页也能显示上次的清单
+      if (r.ok && r.models.length) {
+        writeConfig({ knownModels: r.models });
+      }
+      return r;
+    } catch (err) {
+      return { ok: false, reason: err.message };
     }
   });
 

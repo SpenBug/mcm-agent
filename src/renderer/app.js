@@ -1056,7 +1056,13 @@
     }
 
     const models = [];
-    if (state.config?.model) models.push({ name: state.config.model, hint: '当前使用' });
+    // 已勾选的排前面，主模型标「当前使用」
+    const picked = Array.isArray(state.config?.models)
+      ? state.config.models
+      : (state.config?.model ? [state.config.model] : []);
+    picked.forEach((m, i) => {
+      if (!models.some((x) => x.name === m)) models.push({ name: m, hint: i === 0 ? '当前使用' : '已勾选' });
+    });
     for (const p of state.providers || []) {
       for (const m of p.models || []) if (!models.some((x) => x.name === m)) models.push({ name: m, hint: p.label });
     }
@@ -2284,8 +2290,14 @@
 
       <div class="field">
         <label>模型</label>
-        <input type="text" id="fModel" value="${esc(c.model || '')}" placeholder="deepseek-chat">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="fModel" style="flex:1" value="${esc(c.model || '')}" placeholder="先点「获取模型」，或手输模型名">
+          <button class="btn sm" type="button" id="btnFetchModels">获取模型</button>
+        </div>
+        <div class="desc">点「获取模型」拉取该服务商当前可用的模型，勾选用得到的；列表里第一个是主模型。</div>
         <div class="chip-row" id="modelChips"></div>
+        <div class="chip-row" id="modelPicks"></div>
+        <div class="desc" id="modelPickHint"></div>
       </div>
 
       <div class="field">
@@ -2312,16 +2324,111 @@
       `,
       () => {
         const providerSel = $('fProvider');
+        // 已勾选的模型。初始取保存值；保存时写回 config.models
+        let picked = Array.isArray(c.models) ? c.models.slice() : [];
+        // 上次成功拉到的模型清单（勾选时只重绘，不重新请求）
+        let lastFetched = [];
         const syncChips = () => {
           const p = state.providers.find((x) => x.id === providerSel.value);
           const host = $('modelChips');
           host.innerHTML = '';
+          if (!p || !p.models?.length) return;
           (p?.models || []).forEach((m) => {
             const chip = document.createElement('span');
             chip.className = 'chip';
             chip.textContent = m;
             chip.addEventListener('click', () => {
               $('fModel').value = m;
+            });
+            host.appendChild(chip);
+          });
+        };
+
+        /** 勾选列表：显示 picked 里的模型，可取消、可设主模型 */
+        const renderPicks = () => {
+          const host = $('modelPicks');
+          const hint = $('modelPickHint');
+          host.innerHTML = '';
+          if (!picked.length) {
+            hint.textContent = '还没有勾选模型。点「获取模型」拉取，或直接在上面手输一个。';
+            return;
+          }
+          hint.textContent = `已勾选 ${picked.length} 个。第一个（${picked[0]}）是主模型，其余作为备选。`;
+          picked.forEach((m, i) => {
+            const chip = document.createElement('span');
+            chip.className = 'chip pick on' + (i === 0 ? ' primary' : '');
+            chip.textContent = m;
+            chip.title = i === 0 ? '主模型 · 点一下取消勾选' : '点一下取消勾选；双击设为主模型';
+            chip.addEventListener('click', () => {
+              picked = picked.filter((x) => x !== m);
+              if (i === 0 && picked.length) $('fModel').value = picked[0];
+              renderPicks();
+            });
+            chip.addEventListener('dblclick', () => {
+              if (i === 0) return;
+              picked = [m, ...picked.filter((x) => x !== m)];
+              $('fModel').value = m;
+              renderPicks();
+            });
+            host.appendChild(chip);
+          });
+        };
+
+        /** 拉取模型列表 → 渲染成可勾选 chip */
+        const fetchModels = async () => {
+          const box = $('modelPicks');
+          const btn = $('btnFetchModels');
+          btn.disabled = true;
+          box.innerHTML = '<span class="chip" style="cursor:default">正在获取…</span>';
+          const override = { baseUrl: $('fBaseUrl').value.trim() };
+          const key = $('fApiKey').value.trim();
+          if (key) override.apiKey = key;
+          const r = await api.config.listModels(override);
+          btn.disabled = false;
+          if (!r.ok) {
+            // 断网 / 网关不支持 /models 时，退回上次成功拉到的清单
+            const cached = Array.isArray(state.config?.knownModels) ? state.config.knownModels : [];
+            if (cached.length) {
+              lastFetched = cached;
+              if (!picked.length) picked = [cached[0]];
+              renderFetched();
+              $('modelPickHint').textContent = `没能连上服务商（${r.reason || '未知原因'}），显示上次获取到的 ${cached.length} 个模型。`;
+              return;
+            }
+            box.innerHTML = '<span class="chip" style="cursor:default;color:var(--danger)">获取失败</span>';
+            $('modelPickHint').textContent = `没能拉到模型列表（${r.reason || '未知原因'}）。可以在上面手输模型名。`;
+            return;
+          }
+          if (!r.models.length) {
+            box.innerHTML = '';
+            $('modelPickHint').textContent = '这个服务商返回了空的模型列表，可以在上面手输模型名。';
+            return;
+          }
+          lastFetched = r.models;
+          // 默认勾上第一个，省得用户面对空列表发呆
+          if (!picked.length) picked = [r.models[0]];
+          renderFetched();
+        };
+
+        /** 把 lastFetched 渲染成可勾选 chip（不重新请求，勾选时只重绘） */
+        const renderFetched = () => {
+          const host = $('modelPicks');
+          host.innerHTML = '';
+          $('modelPickHint').textContent = `拉到 ${lastFetched.length} 个模型，点下面的名字勾选：`;
+          lastFetched.forEach((m) => {
+            const chip = document.createElement('span');
+            const on = picked.includes(m);
+            chip.className = 'chip pick' + (on ? ' on' : '') + (picked[0] === m ? ' primary' : '');
+            chip.textContent = m;
+            chip.title = on ? '点一下取消勾选' : '点一下勾选';
+            chip.addEventListener('click', () => {
+              if (picked.includes(m)) {
+                picked = picked.filter((x) => x !== m);
+              } else {
+                picked.push(m);
+              }
+              $('fModel').value = picked[0] || '';
+              renderFetched();
             });
             host.appendChild(chip);
           });
@@ -2333,6 +2440,9 @@
           syncChips();
         });
         syncChips();
+        renderPicks();
+
+        $('btnFetchModels').addEventListener('click', fetchModels);
         $('fTemp').addEventListener('input', (e) => {
           $('tempVal').textContent = e.target.value;
         });
@@ -2353,10 +2463,16 @@
         });
 
         $('btnSaveCfg').addEventListener('click', async () => {
+          // 勾选列表为准。手输只在**完全没勾选**时生效 ——
+          // 否则点预设 chip 会在手输框里留下一个残留值，
+          // 保存时它会被顶成主模型（用户并没想用它）。
+          const typed = $('fModel').value.trim();
+          const models = picked.length ? picked.slice() : (typed ? [typed] : []);
           const patch = {
             provider: $('fProvider').value,
             baseUrl: $('fBaseUrl').value.trim(),
-            model: $('fModel').value.trim(),
+            model: models[0] || '',
+            models,
             temperature: Number($('fTemp').value),
             maxTokens: Number($('fMaxTokens').value),
             maxIterations: Number($('fMaxIter').value),
@@ -2472,11 +2588,15 @@
   function updateHeader() {
     const c = state.config || {};
     const badge = $('modelBadge');
-    if (c.hasApiKey && c.model) {
-      badge.textContent = c.model;
+    // 多选模型时徽章显示「主模型 +N」，点开设置才知道全部勾了哪些
+    const models = Array.isArray(c.models) ? c.models : (c.model ? [c.model] : []);
+    if (c.hasApiKey && models.length) {
+      badge.textContent = models.length > 1 ? `${models[0]} +${models.length - 1}` : models[0];
+      badge.title = models.length > 1 ? `主模型 ${models[0]}\n已勾选 ${models.length} 个` : models[0];
       badge.classList.add('on');
     } else {
       badge.textContent = c.hasApiKey ? '未选模型' : '未配置 API';
+      badge.title = '';
       badge.classList.remove('on');
     }
     $('wsPath').textContent = state.workspace || '未设置工作区';

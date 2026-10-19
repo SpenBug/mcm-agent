@@ -248,4 +248,45 @@ async function testConnection(config) {
   };
 }
 
-module.exports = { streamChat, testConnection, joinUrl, normalizeUsage };
+module.exports = { streamChat, testConnection, listModels, joinUrl, normalizeUsage };
+
+/**
+ * 拉取服务商的模型列表（OpenAI 兼容的 GET /models）。
+ *
+ * 为什么要这个：以前模型名靠手输，打错一个字符要到发送时才报错，
+ * 而各家模型名又长又乱（`Qwen/Qwen3-235B-A22B-Instruct-2507`）。
+ * 能拉列表就该拉列表，让用户勾选。
+ *
+ * ⚠️ 三种服务商这条路走不通，调用方要能用本地预设兜住：
+ *   - Ollama 有 /v1/models 但返回的是本地已拉的模型，没拉过就空
+ *   - 部分网关不实现 /models（返回 404），但有 /models?verbose 之类变体
+ *   - 少数服务商要求 key 有 models:read 权限，权限不够返回 403
+ * 所以失败时**不抛错**，返回 { ok:false, reason }，界面回退到预设芯片。
+ */
+async function listModels({ baseUrl, apiKey }) {
+  const url = joinUrl(baseUrl, '/models');
+  const headers = { Authorization: `Bearer ${apiKey || 'EMPTY'}` };
+  let res;
+  try {
+    res = await fetch(url, { headers });
+  } catch (err) {
+    return { ok: false, reason: '网络不通：' + (err.message || err) };
+  }
+  if (!res.ok) {
+    // 404/403 是最常见的两种：网关没实现这个端点、key 权限不够
+    let detail = '';
+    try { detail = (await res.text()).slice(0, 200); } catch { /* 忽略 */ }
+    return { ok: false, reason: `HTTP ${res.status}${detail ? '：' + detail : ''}` };
+  }
+  let json;
+  try { json = await res.json(); } catch { return { ok: false, reason: '返回不是 JSON' }; }
+
+  // 标准形状 { object:'list', data:[{id}] }；个别网关直接返回数组
+  const raw = Array.isArray(json) ? json : (Array.isArray(json.data) ? json.data : []);
+  const ids = [...new Set(raw
+    .map((m) => (typeof m === 'string' ? m : (m && (m.id || m.name || m.model))))
+    .filter((id) => typeof id === 'string' && id.trim()))];
+  // 按字母排：用户是"在一堆名字里找自己要的那个"，有序才好找
+  ids.sort((a, b) => a.localeCompare(b));
+  return { ok: true, models: ids };
+}

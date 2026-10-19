@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('mcm', {
     get: () => ipcRenderer.invoke('config:get'),
     save: (patch) => ipcRenderer.invoke('config:save', patch),
     test: (override) => ipcRenderer.invoke('config:test', override),
+    listModels: (override) => ipcRenderer.invoke('config:listModels', override),
   },
   input: {
     // Electron 32+ 移除了 File.path，取真实路径必须走 webUtils（只能在 preload 调用）

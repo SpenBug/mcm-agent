@@ -21,8 +21,14 @@ const DEFAULT_CONFIG = {
   baseUrl: 'https://api.deepseek.com/v1',
   apiKey: '',
   model: 'deepseek-chat',
+  // 已勾选的模型（多选）。空数组 = 未配置过，界面引导去勾；
+  // 非空时 model 是其中第一个（主模型），其余作为备选。
+  models: [],
   temperature: 0.3,
   maxTokens: 8192,
+  // 上次成功拉到的模型列表（断网时设置页也能显示）。
+  // 由 config:listModels 写入，渲染层只在拉取失败时读取它兜底。
+  knownModels: [],
   workspace: '',
   autoApprove: true,
   maxIterations: 80,
@@ -52,11 +58,57 @@ function readConfig() {
   }
   cache = { ...DEFAULT_CONFIG, ...stored };
   if (!cache.workspace) cache.workspace = getDefaultWorkspace();
+  // model 与 models 必须一致。磁盘上可能出现「models 有值但 model 为空」
+  // （老配置迁移、用户手改过 config.json）—— 那种情况下 chat:send 的
+  // `!cfg.model` 门禁会把已配好的用户误拦成「尚未选择模型」。
+  if (!cache.model && cache.models?.length) {
+    cache.model = normalizeModels(cache)[0];
+  }
   return cache;
 }
 
+/** 返回给渲染进程的配置（脱敏：不返回完整 key，只返回是否已配置 + 尾号） */
+function publicConfig() {
+  const c = readConfig();
+  const list = normalizeModels(c);
+  return {
+    ...c,
+    // 抹平成数组，渲染层不用判 undefined
+    models: list,
+    apiKey: undefined,
+    hasApiKey: Boolean(c.apiKey && c.apiKey.trim()),
+    apiKeyTail: c.apiKey ? c.apiKey.slice(-4) : '',
+  };
+}
+
+/**
+ * 把配置里的 models 归一成字符串数组。
+ * 老配置只有 model 单值 → 转成 [model]，保证升级后勾选状态不丢。
+ */
+function normalizeModels(c) {
+  const arr = Array.isArray(c.models) ? c.models.filter((m) => typeof m === 'string' && m.trim()) : [];
+  if (arr.length) return arr;
+  const one = typeof c.model === 'string' ? c.model.trim() : '';
+  return one ? [one] : [];
+}
+
+/**
+ * 当前生效的模型：勾选列表的第一个。
+ * 渲染层与 loop.js 都从这里取，避免两边各存一份而漂移。
+ */
+function activeModel(c = readConfig()) {
+  const list = normalizeModels(c);
+  return list[0] || c.model || '';
+}
+
+/** 写配置时保持 models 与 model 同步（model 始终是列表第一个） */
 function writeConfig(patch) {
-  const next = { ...readConfig(), ...patch };
+  const base = readConfig();
+  const next = { ...base, ...patch };
+  if (Array.isArray(next.models)) {
+    next.models = next.models.filter((m) => typeof m === 'string' && m.trim());
+    next.model = next.models[0] || base.model || '';
+  }
   cache = next;
   const file = getConfigPath();
   ensureDir(path.dirname(file));
@@ -64,15 +116,7 @@ function writeConfig(patch) {
   return next;
 }
 
-/** 返回给渲染进程的配置（脱敏：不返回完整 key，只返回是否已配置 + 尾号） */
-function publicConfig() {
-  const c = readConfig();
-  return {
-    ...c,
-    apiKey: undefined,
-    hasApiKey: Boolean(c.apiKey && c.apiKey.trim()),
-    apiKeyTail: c.apiKey ? c.apiKey.slice(-4) : '',
-  };
-}
-
-module.exports = { PROVIDERS, DEFAULT_CONFIG, readConfig, writeConfig, publicConfig };
+module.exports = {
+  PROVIDERS, DEFAULT_CONFIG, readConfig, writeConfig, publicConfig,
+  normalizeModels, activeModel,
+};
