@@ -124,7 +124,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   });
   win.once('ready-to-show', () => win.show());
@@ -132,8 +132,14 @@ function createWindow() {
 
   // 外链一律用系统浏览器打开，不在应用窗口里导航走
   win.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (/^https:\/\//i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
+  });
+  win.webContents.on('will-navigate', (e, url) => {
+    const isSelf = url.startsWith('file://') && /index\.html(\?|#|$)/.test(url);
+    if (isSelf) return;
+    e.preventDefault();
+    if (/^https:\/\//i.test(url)) shell.openExternal(url);
   });
 }
 
@@ -298,7 +304,13 @@ function registerIpc() {
     return { canceled: false, deleted };
   });
 
-  handle('shell:show-item', (p) => { shell.showItemInFolder(p); return true; });
+  handle('shell:show-item', (p) => {
+    const abs = path.resolve(String(p || ''));
+    const allowed = [core.ledgerPath, core.invitePath].map((x) => path.resolve(x));
+    if (!allowed.includes(abs)) throw new Error('只能定位台账或邀请记录');
+    shell.showItemInFolder(abs);
+    return true;
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -361,7 +373,14 @@ async function runSelfTest(reportPath) {
     add('永久卡 payload 带 perpetual 标', pf.payload.perpetual === true);
     add('永久卡回显「永久」', pf.expireText === '永久', pf.expireText);
     add('返回邀请码', /^\d{6}$/.test(r.inviteCode), r.inviteCode);
-    add('台账已写入', core.readLedger().length === 1, String(core.readLedger().length));
+    const ledgerRows = core.readLedger();
+    add(
+      '台账已写入（月卡 + 永久卡两行）',
+      ledgerRows.length === 2
+        && ledgerRows.some((x) => x.card === r.payload.card)
+        && ledgerRows.some((x) => x.card === pf.payload.card),
+      String(ledgerRows.length)
+    );
     add('排号有空洞也不撞（0001,0003 → 4）',
       core.nextSeq(2026, [{ card: 'MCM-2026-0001' }, { card: 'MCM-2026-0003' }]) === 4);
 

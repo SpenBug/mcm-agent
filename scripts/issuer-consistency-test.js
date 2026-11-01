@@ -91,6 +91,8 @@ const keygenPub = keygenPublicKey(keygenHtml);
 
 check('客户端内嵌了公钥', clientPub.length > 0);
 check('keygen.html 内嵌了公钥', keygenPub.length > 0);
+check('keygen 私钥不写入 localStorage', !/localStorage\.setItem\(\s*LS_KEY/.test(keygenHtml));
+check('keygen 私钥只在 sessionStorage', /sessionStorage\.setItem\(\s*LS_KEY/.test(keygenHtml));
 
 if (privPem && clientPub) {
   const derived = norm(crypto.createPublicKey(privPem).export({ type: 'spki', format: 'pem' }));

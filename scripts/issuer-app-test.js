@@ -87,6 +87,10 @@ check('main.js 不写死价格', !/¥\s*\d+/.test(mainSrc), '出现了写死价�
 check('不起 HTTP 服务（走 IPC，攻击面更小）', !/require\('node:http'\)/.test(mainSrc));
 check('开启了 contextIsolation', /contextIsolation:\s*true/.test(mainSrc));
 check('关闭了 nodeIntegration', /nodeIntegration:\s*false/.test(mainSrc));
+check('开启渲染器 sandbox', /sandbox:\s*true/.test(mainSrc));
+check('外链只放行 https', mainSrc.includes('if (/^https:\\/\\//i.test(url))'));
+check('窗口内导航被拦截', /will-navigate/.test(mainSrc));
+check('定位文件只允许台账/邀请记录', /只能定位台账或邀请记录/.test(mainSrc));
 
 /* ---------------------------------------------------------------- ④ 链路 */
 

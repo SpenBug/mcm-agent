@@ -3,6 +3,8 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; object-src 'none'; base-uri 'none';" />
 <title>阿一古数模 · 卡密签发器</title>
 <style>
   :root {
@@ -151,14 +153,15 @@
   <section class="card">
     <div class="hd"><em>1</em><b>私钥</b><span class="note" id="keyState"></span></div>
     <div class="bd">
-      <label for="priv">把 <code>keys/license-private.pem</code> 的内容整段粘进来（首次一次即可）</label>
+      <label for="priv">把 <code>keys/license-private.pem</code> 的内容整段粘进来（当前标签页一次即可）</label>
       <textarea id="priv" rows="4" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"></textarea>
       <div class="acts">
-        <button class="btn primary" id="saveKey">保存私钥</button>
+        <button class="btn primary" id="saveKey">载入私钥</button>
         <button class="btn sm danger" id="clearKey">清除</button>
       </div>
       <div class="warnbox">
-        ⚠️ 私钥存在这个浏览器的 localStorage 里。<b>别在公用电脑上保存</b>；换电脑要重新粘贴一次。
+        ⚠️ 私钥只存在当前标签页的 sessionStorage 里，<b>关闭标签页即清除</b>；别在公用电脑上操作。
+        日常发卡更建议用独立签发器应用。
         私钥一旦泄露，别人就能无限发卡 —— 请另存两份离线备份。
       </div>
     </div>
@@ -466,10 +469,10 @@ async function copyText(txt) {
 function renderKeyState(hasKey) {
   const el = $('keyState');
   el.innerHTML = hasKey
-    ? '<span class="pill ok">✓ 已保存</span>'
+    ? '<span class="pill ok">✓ 已载入</span>'
     : '<span class="pill bad">未设置</span>';
   $('issue').disabled = !hasKey;
-  if (hasKey) $('priv').value = '（已保存，如需更换请先点「清除」）';
+  if (hasKey) $('priv').value = '（已载入当前标签页，如需更换请先点「清除」）';
 }
 
 function renderMachineHint() {
@@ -532,25 +535,27 @@ $('saveKey').addEventListener('click', async () => {
   if (!pem.includes('PRIVATE KEY')) { flash('这不是一个私钥 PEM'); return; }
   try {
     await importPrivateKey(pem);          // 先试导入，导不进就不保存
-    localStorage.setItem(LS_KEY, pem);
+    sessionStorage.setItem(LS_KEY, pem);
+    localStorage.removeItem(LS_KEY);   // 清掉旧版本可能留在磁盘上的副本
     renderKeyState(true);
-    flash('私钥已保存');
+    flash('私钥已载入当前标签页');
   } catch (e) {
     flash('导入失败：' + e.message);
   }
 });
 
 $('clearKey').addEventListener('click', () => {
+  sessionStorage.removeItem(LS_KEY);
   localStorage.removeItem(LS_KEY);
   $('priv').value = '';
   renderKeyState(false);
-  flash('已清除');
+  flash('已从当前标签页清除');
 });
 
 $('machine').addEventListener('input', renderMachineHint);
 
 $('issue').addEventListener('click', async () => {
-  const pem = localStorage.getItem(LS_KEY);
+  const pem = sessionStorage.getItem(LS_KEY);
   if (!pem) { flash('先设置私钥'); return; }
 
   const machine = normalizeMachine($('machine').value);
@@ -704,7 +709,9 @@ $('clearLedger').addEventListener('click', () => {
 /* ---------- 启动 ---------- */
 
 (async function boot() {
-  const has = !!localStorage.getItem(LS_KEY);
+  // 兼容升级：旧版本把私钥持久化在 localStorage，启动时主动清掉。
+  try { localStorage.removeItem(LS_KEY); } catch { /* 隐私模式等场景忽略 */ }
+  const has = !!sessionStorage.getItem(LS_KEY);
   renderKeyState(has);
   renderMachineHint();
   renderLedger();
