@@ -199,7 +199,14 @@ async function generateTitle({ config, messages, chat = streamChat, timeoutMs = 
 
   // 标题是辅助调用，绝不能把主对话拖住：独立 signal + 端到端 deadline。
   // maxTokens 压到 48：标题就一行字，多给只会让慢模型磨蹭。
-  const callCfg = { ...config, maxTokens: cfg.maxOutputTokens, temperature: 0.2 };
+  // 标题是轻量辅助调用，不跟随聊天框里的思考强度：既避免慢模型磨蹭，
+  // 也避免部分网关不支持 reasoning_effort 时把标题生成一起打挂。
+  const callCfg = {
+    ...config,
+    maxTokens: cfg.maxOutputTokens,
+    temperature: 0.2,
+    reasoningEffort: 'auto',
+  };
 
   // 有些网关返回体是空的但流里有内容，所以两条都收
   let content = '';

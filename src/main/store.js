@@ -21,6 +21,12 @@ const DEFAULT_CONFIG = {
   baseUrl: 'https://api.deepseek.com/v1',
   apiKey: '',
   model: 'deepseek-chat',
+  // 当前会话使用的模型。model / models[0] 是设置页里的主模型，
+  // chatModel 允许用户不改主模型、直接在输入框右下角临时切换。
+  chatModel: '',
+  // 仅对支持 OpenAI 兼容 reasoning_effort 的模型生效。
+  // auto = 不向服务端传该字段，避免不支持的网关直接 400。
+  reasoningEffort: 'auto',
   // 已勾选的模型（多选）。空数组 = 未配置过，界面引导去勾；
   // 非空时 model 是其中第一个（主模型），其余作为备选。
   models: [],
@@ -30,7 +36,6 @@ const DEFAULT_CONFIG = {
   // 由 config:listModels 写入，渲染层只在拉取失败时读取它兜底。
   knownModels: [],
   workspace: '',
-  autoApprove: true,
   maxIterations: 80,
   pythonPath: '',
   lastProject: '',
@@ -40,8 +45,16 @@ const DEFAULT_CONFIG = {
 
 let cache = null;
 
+const REASONING_EFFORTS = ['auto', 'low', 'medium', 'high'];
+
 function ensureDir(p) {
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+}
+
+/** 思考强度白名单。未知值一律回退到 auto，避免把脏配置发给服务商。 */
+function normalizeReasoningEffort(value) {
+  const v = String(value || '').trim().toLowerCase();
+  return REASONING_EFFORTS.includes(v) ? v : 'auto';
 }
 
 function readConfig() {
@@ -64,6 +77,13 @@ function readConfig() {
   if (!cache.model && cache.models?.length) {
     cache.model = normalizeModels(cache)[0];
   }
+  // 老配置没有 chatModel：默认跟随主模型，保证升级后行为不变。
+  if (typeof cache.chatModel !== 'string' || !cache.chatModel.trim()) {
+    cache.chatModel = normalizeModels(cache)[0] || cache.model || '';
+  } else {
+    cache.chatModel = cache.chatModel.trim();
+  }
+  cache.reasoningEffort = normalizeReasoningEffort(cache.reasoningEffort);
   return cache;
 }
 
@@ -71,10 +91,14 @@ function readConfig() {
 function publicConfig() {
   const c = readConfig();
   const list = normalizeModels(c);
+  const active = activeModel(c);
   return {
     ...c,
     // 抹平成数组，渲染层不用判 undefined
     models: list,
+    chatModel: active,
+    activeModel: active,
+    reasoningEffort: normalizeReasoningEffort(c.reasoningEffort),
     apiKey: undefined,
     hasApiKey: Boolean(c.apiKey && c.apiKey.trim()),
     apiKeyTail: c.apiKey ? c.apiKey.slice(-4) : '',
@@ -98,17 +122,34 @@ function normalizeModels(c) {
  */
 function activeModel(c = readConfig()) {
   const list = normalizeModels(c);
-  return list[0] || c.model || '';
+  const selected = typeof c.chatModel === 'string' ? c.chatModel.trim() : '';
+  return selected || list[0] || c.model || '';
 }
 
-/** 写配置时保持 models 与 model 同步（model 始终是列表第一个） */
+/**
+ * 写配置时保持 models 与 model 同步（model 始终是列表第一个）。
+ * chatModel 是「当前聊天使用哪一个」，可以与主模型不同。
+ */
 function writeConfig(patch) {
   const base = readConfig();
   const next = { ...base, ...patch };
   if (Array.isArray(next.models)) {
     next.models = next.models.filter((m) => typeof m === 'string' && m.trim());
-    next.model = next.models[0] || base.model || '';
+    if (next.models.length) {
+      next.model = next.models[0];
+    } else if (Object.prototype.hasOwnProperty.call(patch, 'model')) {
+      // 显式清空模型列表时，patch.model 才是真源。
+      // 旧实现这里回退 base.model，导致「清空列表」和测试恢复配置时
+      // 把上一轮的临时模型名重新写回来。
+      next.model = typeof patch.model === 'string' ? patch.model.trim() : '';
+    } else {
+      next.model = base.model || '';
+    }
   }
+  next.chatModel = typeof next.chatModel === 'string' && next.chatModel.trim()
+    ? next.chatModel.trim()
+    : (normalizeModels(next)[0] || next.model || '');
+  next.reasoningEffort = normalizeReasoningEffort(next.reasoningEffort);
   cache = next;
   const file = getConfigPath();
   ensureDir(path.dirname(file));
@@ -118,5 +159,5 @@ function writeConfig(patch) {
 
 module.exports = {
   PROVIDERS, DEFAULT_CONFIG, readConfig, writeConfig, publicConfig,
-  normalizeModels, activeModel,
+  normalizeModels, activeModel, normalizeReasoningEffort, REASONING_EFFORTS,
 };

@@ -24,6 +24,10 @@
 
   /** 输入防抖计时器。提到这里是为了让切会话 / 发送都能取消它 */
   let draftTimer = null;
+  /** 发送锁：snapshot.create 是 await，期间必须挡住第二条消息。 */
+  let sendInFlight = false;
+  /** 会话加载序号：快速连点两个会话时，只允许最后一次响应落地。 */
+  let sessionOpenSeq = 0;
 
   /** 把当前输入框内容存回它所属会话，并记住"最后在编辑哪个会话" */
   function stashDraft() {
@@ -71,10 +75,62 @@
     lastPreview: '',
   };
 
+  const REASONING_LEVELS = [
+    { id: 'auto', label: '自动', hint: '由模型自行决定' },
+    { id: 'low', label: '低', hint: '更快，适合简单问答' },
+    { id: 'medium', label: '中', hint: '速度与深度平衡' },
+    { id: 'high', label: '高', hint: '更深入，通常更慢' },
+  ];
+
   /* ================= 工具函数 ================= */
 
   const esc = (s) =>
     String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  function normalizeChatEffort(value) {
+    const v = String(value || '').trim().toLowerCase();
+    return REASONING_LEVELS.some((x) => x.id === v) ? v : 'auto';
+  }
+
+  function effortInfo(value) {
+    const id = normalizeChatEffort(value);
+    return REASONING_LEVELS.find((x) => x.id === id) || REASONING_LEVELS[0];
+  }
+
+  /** 当前聊天使用的模型。主进程会随每条消息再校验一次。 */
+  function currentChatModel() {
+    const c = state.config || {};
+    return String(
+      c.activeModel
+      || c.chatModel
+      || (Array.isArray(c.models) && c.models[0])
+      || c.model
+      || ''
+    ).trim();
+  }
+
+  /**
+   * 可选模型来源：当前模型 > 设置里勾选的模型 > 当前服务商预设 > 上次获取到的清单。
+   * 只列当前服务商，避免用户切到一个 baseUrl 根本接不上的模型。
+   */
+  function availableChatModels() {
+    const out = [];
+    const seen = new Set();
+    const add = (name, source) => {
+      const n = String(name || '').trim();
+      if (!n || seen.has(n)) return;
+      seen.add(n);
+      out.push({ name: n, source });
+    };
+
+    const c = state.config || {};
+    add(currentChatModel(), 'current');
+    (Array.isArray(c.models) ? c.models : []).forEach((m) => add(m, 'picked'));
+    const provider = (state.providers || []).find((p) => p.id === c.provider);
+    (provider?.models || []).forEach((m) => add(m, 'preset'));
+    (Array.isArray(c.knownModels) ? c.knownModels : []).forEach((m) => add(m, 'known'));
+    return out;
+  }
 
   function fmtSize(n) {
     if (!n) return '';
@@ -1028,13 +1084,177 @@
     if (!el) return;
     let ph;
     if (!state.config?.hasApiKey) {
-      ph = '先在设置里填 API Key（左下角「设置」），配好就能开始';
+      ph = '先在右上角「设置」里填 API Key，配好就能开始';
     } else if (state.materialCount > 0) {
       ph = `已收到 ${state.materialCount} 项材料。说明要解决什么问题、出什么成果（输入 @{ 可引用材料）`;
     } else {
       ph = '描述你的题目或任务，例如：把这道题做完整流程，论文出 Word 版（输入 @{ 可引用材料）';
     }
     if (el.placeholder !== ph) el.placeholder = ph;
+  }
+
+  /* ================= 模型 / 思考强度 ================= */
+
+  let chatControlSaveSeq = 0;
+
+  function renderModelList() {
+    const list = $('modelList');
+    if (!list) return;
+    const active = currentChatModel();
+    const picked = new Set(Array.isArray(state.config?.models) ? state.config.models : []);
+    const query = String($('modelSearch')?.value || '').trim().toLowerCase();
+    const models = availableChatModels().filter((m) => !query || m.name.toLowerCase().includes(query));
+
+    if (!models.length) {
+      list.innerHTML = '<div class="mp-empty">没有匹配的模型。可先点右上角「管理模型」获取或勾选。</div>';
+      return;
+    }
+
+    list.innerHTML = models.map((m) => {
+      const on = m.name === active;
+      const tag = on ? '当前' : (picked.has(m.name) ? '已启用' : '可用');
+      return `
+        <button class="mp-model-item${on ? ' on' : ''}" type="button" role="option"
+                aria-selected="${on ? 'true' : 'false'}" data-model="${esc(m.name)}"
+                title="${esc(m.name)}">
+          <span class="mp-check" aria-hidden="true"></span>
+          <span class="mp-model-name">${esc(m.name)}</span>
+          <span class="mp-model-tag">${tag}</span>
+        </button>`;
+    }).join('');
+  }
+
+  function renderEffortControl() {
+    const id = normalizeChatEffort(state.config?.reasoningEffort);
+    const level = effortInfo(id);
+    const idx = Math.max(0, REASONING_LEVELS.findIndex((x) => x.id === id));
+    const range = $('effortRange');
+    if (range) {
+      range.value = String(idx);
+      range.style.setProperty('--p', `${(idx / (REASONING_LEVELS.length - 1)) * 100}%`);
+      range.setAttribute('aria-valuetext', level.label);
+      range.title = level.hint;
+    }
+    if ($('effortValue')) {
+      $('effortValue').textContent = level.label;
+      $('effortValue').title = level.hint;
+    }
+    if ($('modelSwitchEffort')) {
+      $('modelSwitchEffort').textContent = `思考 ${level.label}`;
+      $('modelSwitchEffort').classList.toggle('on', id !== 'auto');
+    }
+  }
+
+  function renderModelSwitch() {
+    const name = currentChatModel();
+    const level = effortInfo(state.config?.reasoningEffort);
+    if ($('modelSwitchName')) {
+      $('modelSwitchName').textContent = name || '选择模型';
+      $('modelSwitchName').title = name || '尚未选择模型';
+    }
+    renderEffortControl();
+    const btn = $('btnModelSwitch');
+    if (btn) {
+      btn.title = `当前模型：${name || '未选择'}\n思考强度：${level.label}`;
+      btn.classList.toggle('needs-config', !state.config?.hasApiKey || !name);
+    }
+  }
+
+  function renderModelPop() {
+    renderModelList();
+    renderEffortControl();
+  }
+
+  function closeModelPop() {
+    $('modelPop')?.classList.add('hidden');
+    $('modelSwitch')?.classList.remove('open');
+    $('btnModelSwitch')?.setAttribute('aria-expanded', 'false');
+  }
+
+  function openModelPop() {
+    const pop = $('modelPop');
+    if (!pop) return;
+    closeRefPop();
+    pop.classList.remove('hidden');
+    $('modelSwitch')?.classList.add('open');
+    $('btnModelSwitch')?.setAttribute('aria-expanded', 'true');
+    if ($('modelSearch')) $('modelSearch').value = '';
+    renderModelPop();
+    requestAnimationFrame(() => $('modelSearch')?.focus());
+  }
+
+  function toggleModelPop() {
+    if ($('modelPop')?.classList.contains('hidden')) openModelPop();
+    else closeModelPop();
+  }
+
+  async function saveChatControls(patch) {
+    const seq = ++chatControlSaveSeq;
+    try {
+      const next = await api.config.save(patch);
+      if (seq !== chatControlSaveSeq) return;
+      if (next) state.config = next;
+      updateHeader();
+      renderModelList();
+    } catch (err) {
+      if (seq !== chatControlSaveSeq) return;
+      try {
+        const info = await api.config.get();
+        if (info?.config) state.config = info.config;
+      } catch { /* 读不回就保留当前界面，至少别把交互卡死 */ }
+      updateHeader();
+      renderModelList();
+      toast('模型设置没保存上：' + (err.message || String(err)), 'err');
+    }
+  }
+
+  function chooseChatModel(name) {
+    const model = String(name || '').trim();
+    if (!model) return;
+    state.config = { ...(state.config || {}), chatModel: model, activeModel: model };
+    updateHeader();
+    renderModelList();
+    void saveChatControls({ chatModel: model });
+  }
+
+  function setReasoningEffort(value, persist) {
+    const id = normalizeChatEffort(value);
+    state.config = { ...(state.config || {}), reasoningEffort: id };
+    renderModelSwitch();
+    if (persist) void saveChatControls({ reasoningEffort: id });
+  }
+
+  function bindModelSwitchUI() {
+    const btn = $('btnModelSwitch');
+    const list = $('modelList');
+    const range = $('effortRange');
+    if (!btn || !list || !range) return;
+
+    btn.addEventListener('click', toggleModelPop);
+    $('btnModelPopClose')?.addEventListener('click', closeModelPop);
+    $('btnManageModels')?.addEventListener('click', () => {
+      closeModelPop();
+      openSettings();
+    });
+
+    $('modelSearch')?.addEventListener('input', renderModelList);
+    list.addEventListener('click', (e) => {
+      const item = e.target.closest('.mp-model-item');
+      if (item?.dataset.model) chooseChatModel(item.dataset.model);
+    });
+
+    // input 只更新预览；change 才落盘，拖动滑杆时不会连发十几次 IPC。
+    range.addEventListener('input', () => setReasoningEffort(REASONING_LEVELS[Number(range.value)]?.id, false));
+    range.addEventListener('change', () => setReasoningEffort(REASONING_LEVELS[Number(range.value)]?.id, true));
+
+    document.addEventListener('pointerdown', (e) => {
+      if ($('modelPop')?.classList.contains('hidden')) return;
+      if ($('modelSwitch')?.contains(e.target)) return;
+      closeModelPop();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && !$('modelPop')?.classList.contains('hidden')) closeModelPop();
+    });
   }
 
   /* ================= 引用 chip（@{类别/名称}） ================= */
@@ -1056,13 +1276,17 @@
     }
 
     const models = [];
-    // 已勾选的排前面，主模型标「当前使用」
+    // 已勾选的排前面，聊天框当前选择标「当前使用」
     const picked = Array.isArray(state.config?.models)
       ? state.config.models
       : (state.config?.model ? [state.config.model] : []);
+    const active = currentChatModel();
     picked.forEach((m, i) => {
-      if (!models.some((x) => x.name === m)) models.push({ name: m, hint: i === 0 ? '当前使用' : '已勾选' });
+      if (!models.some((x) => x.name === m)) {
+        models.push({ name: m, hint: m === active ? '当前使用' : (i === 0 ? '主模型' : '已勾选') });
+      }
     });
+    if (active && !models.some((x) => x.name === active)) models.unshift({ name: active, hint: '当前使用' });
     for (const p of state.providers || []) {
       for (const m of p.models || []) if (!models.some((x) => x.name === m)) models.push({ name: m, hint: p.label });
     }
@@ -1098,6 +1322,7 @@
   function openRefPop(query, anchorStart) {
     const pop = $('refPop');
     if (!pop || !Refs) return;
+    closeModelPop();
     const items = Refs.filterCandidates(query, buildRefSources());
     if (!items.length) { closeRefPop(); return; }
     pop._items = items;
@@ -1295,12 +1520,26 @@
 
   async function send(text, timeoutMs) {
     const content = String(text || '').trim();
-    if (!content || state.streaming) return;
+    if (!content || state.streaming || sendInFlight) return;
+    sendInFlight = true;
+    try {
+      await sendNow(content, timeoutMs);
+    } finally {
+      sendInFlight = false;
+    }
+  }
+
+  async function sendNow(content, timeoutMs) {
 
     if (!state.config?.hasApiKey) {
       openSettings();
       return;
     }
+    if (!currentChatModel()) {
+      openModelPop();
+      return;
+    }
+    closeModelPop();
 
     $('input').value = '';
     // 内容已经作为消息发出去了，草稿必须清掉：
@@ -1374,6 +1613,8 @@
         messages: state.messages.slice(),
         sessionId: state.sessionId,
         title: state.sessionTitle,
+        model: currentChatModel(),
+        reasoningEffort: normalizeChatEffort(state.config?.reasoningEffort),
         // 只有重试时才带 —— 平时用主进程的默认值
         timeoutMs,
       });
@@ -2070,7 +2311,10 @@
     // ⚠️ 顺序要紧：stashDraft 用的是 state.sessionId，必须在改它之前调用，
     // 否则会把「上一个会话的输入」存到新会话名下。
     stashDraft();
+    closeModelPop();
+    const seq = ++sessionOpenSeq;
     const data = await api.session.load(id);
+    if (seq !== sessionOpenSeq) return;
     if (!data) return;
     state.sessionId = data.id;
     state.sessionTitle = data.title;
@@ -2097,6 +2341,8 @@
     // 先取消挂起的防抖：否则它会在下面换了 sessionId 之后才触发，
     // 把内容写到一个"用户其实没在编辑"的会话名下。
     cancelDraftTimer();
+    sessionOpenSeq += 1;
+    closeModelPop();
     if (o.discardDraft) drafts.drop(state.sessionId);
     else stashDraft();
 
@@ -2294,7 +2540,7 @@
           <input type="text" id="fModel" style="flex:1" value="${esc(c.model || '')}" placeholder="先点「获取模型」，或手输模型名">
           <button class="btn sm" type="button" id="btnFetchModels">获取模型</button>
         </div>
-        <div class="desc">点「获取模型」拉取该服务商当前可用的模型，勾选用得到的；列表里第一个是主模型。</div>
+        <div class="desc">点「获取模型」拉取该服务商当前可用的模型，勾选用得到的；第一个是默认主模型，之后可在输入框右下角随时切换。</div>
         <div class="chip-row" id="modelChips"></div>
         <div class="chip-row" id="modelPicks"></div>
         <div class="desc" id="modelPickHint"></div>
@@ -2353,7 +2599,7 @@
             hint.textContent = '还没有勾选模型。点「获取模型」拉取，或直接在上面手输一个。';
             return;
           }
-          hint.textContent = `已勾选 ${picked.length} 个。第一个（${picked[0]}）是主模型，其余作为备选。`;
+          hint.textContent = `已勾选 ${picked.length} 个。第一个（${picked[0]}）是默认主模型，输入框右下角可随时切换。`;
           picked.forEach((m, i) => {
             const chip = document.createElement('span');
             chip.className = 'chip pick on' + (i === 0 ? ' primary' : '');
@@ -2472,6 +2718,7 @@
             provider: $('fProvider').value,
             baseUrl: $('fBaseUrl').value.trim(),
             model: models[0] || '',
+            chatModel: models[0] || '',
             models,
             temperature: Number($('fTemp').value),
             maxTokens: Number($('fMaxTokens').value),
@@ -2514,7 +2761,11 @@
         `
         <h3 style="margin:0 0 10px;font-size:13.5px;font-weight:600">Python 运行时</h3>
         <div class="status-box ${deps?.ok ? 'ok' : 'err'}">
-          ${deps?.ok ? '依赖齐备 ✓ 画图 / Excel / Word / 论文检索均可用' : '缺少依赖，部分功能（画图、Excel、Word）不可用'}
+          ${deps?.error
+            ? `Python 解释器无法启动：${esc(deps.error)}`
+            : deps?.ok
+              ? '依赖齐备 ✓ 画图 / Excel / Word / 论文检索均可用'
+              : '缺少依赖，部分功能（画图、Excel、Word）不可用'}
         </div>
 
         <div class="field">
@@ -2588,11 +2839,13 @@
   function updateHeader() {
     const c = state.config || {};
     const badge = $('modelBadge');
-    // 多选模型时徽章显示「主模型 +N」，点开设置才知道全部勾了哪些
+    // 徽章跟随输入框右下角的当前选择，而不是永远显示设置里的第一个模型。
     const models = Array.isArray(c.models) ? c.models : (c.model ? [c.model] : []);
-    if (c.hasApiKey && models.length) {
-      badge.textContent = models.length > 1 ? `${models[0]} +${models.length - 1}` : models[0];
-      badge.title = models.length > 1 ? `主模型 ${models[0]}\n已勾选 ${models.length} 个` : models[0];
+    const active = currentChatModel();
+    if (c.hasApiKey && active) {
+      badge.textContent = active;
+      badge.title = `当前模型：${active}\n思考强度：${effortInfo(c.reasoningEffort).label}`
+        + (models.length > 1 ? `\n设置里已勾选 ${models.length} 个模型` : '');
       badge.classList.add('on');
     } else {
       badge.textContent = c.hasApiKey ? '未选模型' : '未配置 API';
@@ -2601,6 +2854,7 @@
     }
     $('wsPath').textContent = state.workspace || '未设置工作区';
     $('wsPath').title = state.workspace || '';
+    renderModelSwitch();
     // 提示语和顶栏徽章依赖同一个 hasApiKey 判断，挂在这里就不用
     // 在每个改配置的地方各补一句（保存 Key / 清除 Key / 换工作区 / 启动）
     updatePlaceholder();
@@ -2697,6 +2951,7 @@
     // 它读的 state.providers / state.materialFiles 都在 init 流程里
     // 各自填充，一定早于用户可能输入 @{ 的时刻。
     bindRefsUI();
+    bindModelSwitchUI();
 
     $('btnSettings').addEventListener('click', openSettings);
     $('btnEnv').addEventListener('click', openEnv);
@@ -2982,6 +3237,9 @@
      正常启动（file://.../index.html）不带这个参数，等于没有。
      有它才能断言 state.messages 的结构 —— 光看 DOM 看不出消息顺序对不对。 */
   if (location.search.includes('__test')) {
-    window.__mcmTest = { state, onChatEvent, describeStep, openCmdk, closeCmdk, renderCmdk };
+    window.__mcmTest = {
+      state, onChatEvent, describeStep, openCmdk, closeCmdk, renderCmdk,
+      currentChatModel, renderModelSwitch, renderModelList, openModelPop, closeModelPop,
+    };
   }
 })();

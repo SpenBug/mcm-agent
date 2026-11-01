@@ -81,7 +81,8 @@ function withTempLicense() {
 async function checkBackend() {
   const out = [];
   const skillsRoot = getSkillsRoot();
-  const workspace = getDefaultWorkspace();
+  const { readConfig } = require('./store');
+  const workspace = readConfig().workspace || getDefaultWorkspace();
   fs.mkdirSync(workspace, { recursive: true });
   const ctx = { workspace, skillsRoot, pythonPath: 'python' };
 
@@ -105,7 +106,7 @@ async function checkBackend() {
   out.push(`  mcm-tools/SKILL.md          ${fs.existsSync(mtSkill) ? '✓' : '✗'}   ← 工具链`);
   out.push(`  mcm-tools/mcm_io.py         ${fs.existsSync(mtIo) ? '✓' : '✗'}`);
 
-  const prompt = buildSystemPrompt({ workspace, skillsRoot, config: { autoApprove: true } });
+  const prompt = buildSystemPrompt({ workspace, skillsRoot });
   out.push(`systemPrompt 长度 = ${prompt.length} 字符`);
   out.push(`  含「接料建卡」五步流程 = ${prompt.includes('接料建卡')}`);
   out.push(`  含四类输入契约 = ${prompt.includes('客户必须提供的四类输入')}`);
@@ -216,6 +217,10 @@ async function checkChatE2E(win) {
       baseUrl: `http://127.0.0.1:${port}/v1`,
       apiKey: 'mock-key',
       model: 'mock-model',
+      models: ['mock-model', 'mock-model-alt'],
+      chatModel: 'mock-model-alt',
+      knownModels: ['mock-model', 'mock-model-alt'],
+      reasoningEffort: 'auto',
       maxIterations: 3,
     });
 
@@ -228,6 +233,23 @@ async function checkChatE2E(win) {
     const raw = await win.webContents.executeJavaScript(`
       (async () => {
         document.getElementById('btnDrawerClose')?.click();
+        // 从输入框右下角真实切换模型和思考强度，确保不只是把值写进 state。
+        document.getElementById('btnModelSwitch')?.click();
+        await new Promise(r => setTimeout(r, 220));
+        const item = [...document.querySelectorAll('#modelList .mp-model-item')]
+          .find(n => n.dataset.model === 'mock-model');
+        item?.click();
+        await new Promise(r => setTimeout(r, 180));
+        const range = document.getElementById('effortRange');
+        if (range) {
+          range.value = '3';
+          range.dispatchEvent(new Event('input', { bubbles: true }));
+          range.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        await new Promise(r => setTimeout(r, 320));
+        document.getElementById('btnModelPopClose')?.click();
+        const cfgAfter = await window.mcm.config.get();
+
         const input = document.getElementById('input');
         input.value = 'PING_E2E_MARKER';
         input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -235,7 +257,15 @@ async function checkChatE2E(win) {
         await new Promise(r => setTimeout(r, 5000));
         const userBubbles = [...document.querySelectorAll('.msg.user .bubble')].map(b => b.textContent.trim());
         const asstBubbles = [...document.querySelectorAll('.msg.assistant .bubble')].map(b => b.textContent.trim());
-        return JSON.stringify({ userBubbles, asstBubbles });
+        return JSON.stringify({
+          userBubbles,
+          asstBubbles,
+          selectedModel: cfgAfter?.config?.activeModel || cfgAfter?.config?.chatModel || '',
+          selectedEffort: cfgAfter?.config?.reasoningEffort || '',
+          triggerModel: document.getElementById('modelSwitchName')?.textContent || '',
+          triggerEffort: document.getElementById('modelSwitchEffort')?.textContent || '',
+          badge: document.getElementById('modelBadge')?.textContent || '',
+        });
       })()
     `);
     const ui = JSON.parse(raw);
@@ -266,12 +296,23 @@ async function checkChatE2E(win) {
       }`,
     );
     out.push(`请求带 7 个 tools 定义 => ${Array.isArray(req0.tools) && req0.tools.length === 7 ? '✓' : `✗ ${req0.tools?.length}`}`);
+    out.push(`模型切换已落配置 => ${ui.selectedModel === 'mock-model' ? '✓ mock-model' : `✗ ${ui.selectedModel}`}`);
+    out.push(`对话请求使用切换后的模型 => ${req0.model === 'mock-model' ? '✓ mock-model' : `✗ ${req0.model}`}`);
+    out.push(`思考强度已落配置 => ${ui.selectedEffort === 'high' ? '✓ high' : `✗ ${ui.selectedEffort}`}`);
+    out.push(`对话请求带上 reasoning_effort=high => ${req0.reasoning_effort === 'high' ? '✓' : `✗ ${req0.reasoning_effort || '(无)'}`}`);
+    out.push(`右下角入口同步显示当前选择 => ${
+      ui.triggerModel === 'mock-model' && ui.triggerEffort.includes('高')
+        ? `✓ ${ui.triggerModel} / ${ui.triggerEffort}`
+        : `✗ ${ui.triggerModel} / ${ui.triggerEffort}`
+    }`);
+    out.push(`顶栏模型徽章同步 => ${ui.badge === 'mock-model' ? '✓' : `✗ ${ui.badge}`}`);
 
     // 会话标题功能：确实发出了辅助请求、且不带 tools（不该污染对话链路）、
     // 用户原文被 JSON 框住（防提示词注入）
     out.push(`并行发出标题辅助请求 => ${titleReq ? '✓' : `✗ 未捕获（共 ${received.length} 个请求）`}`);
     if (titleReq) {
       out.push(`  标题请求不带 tools（不污染对话链路） => ${!titleReq.tools ? '✓' : `✗ tools=${titleReq.tools.length}`}`);
+      out.push(`  标题辅助请求不继承 reasoning_effort => ${!Object.prototype.hasOwnProperty.call(titleReq, 'reasoning_effort') ? '✓' : `✗ ${titleReq.reasoning_effort}`}`);
       const tu = ((titleReq.messages || []).find((m) => m.role === 'user') || {}).content || '';
       out.push(`  用户原文被 JSON 框住 => ${tu.includes('JSON array') && tu.includes('PING_E2E_MARKER') ? '✓' : `✗ ${tu.slice(0, 60)}`}`);
       out.push(`  标题请求 max_tokens 已收紧 => ${titleReq.max_tokens > 0 && titleReq.max_tokens <= 64 ? `✓ ${titleReq.max_tokens}` : `✗ ${titleReq.max_tokens}`}`);
@@ -304,7 +345,7 @@ async function checkChatE2E(win) {
     const av = JSON.parse(avatarInfo);
     out.push(`助手头像已是马头 => ${av.href === '#brandMarkMono' ? '✓' : `✗ ${av.href}`}`);
     // svg 没显式尺寸时会按默认值撑破 28px 格子（把头像挤成长条）
-    out.push(`  头像 svg 尺寸受控（格子 ${av.cell}） => ${av.box === '19x19' ? '✓ 19x19' : `✗ ${av.box}`}`);
+    out.push(`  头像 svg 尺寸受控（格子 ${av.cell}） => ${av.box === '20x20' ? '✓ 20x20' : `✗ ${av.box}`}`);
     out.push(`  发消息后界面仍无残留 ∑ => ${av.sigma === 0 ? '✓' : `✗ ${av.sigma} 处`}`);
     // 草稿：发送后必须清掉，否则切回来会重新冒出同一句话
     out.push(`发送后输入框已清空 => ${!(await win.webContents.executeJavaScript('document.getElementById("input").value')) ? '✓' : '✗'}`);
@@ -316,8 +357,24 @@ async function checkChatE2E(win) {
       baseUrl: backup.baseUrl,
       apiKey: backup.apiKey,
       model: backup.model,
+      models: backup.models,
+      chatModel: backup.chatModel,
+      knownModels: backup.knownModels,
+      reasoningEffort: backup.reasoningEffort,
       maxIterations: backup.maxIterations,
     });
+    const restored = readConfig();
+    const sameModels = JSON.stringify(restored.models || []) === JSON.stringify(backup.models || []);
+    out.push(
+      `测试配置已恢复（model/chatModel/models/effort） => ${
+        restored.model === backup.model
+        && restored.chatModel === backup.chatModel
+        && sameModels
+        && restored.reasoningEffort === backup.reasoningEffort
+          ? '✓'
+          : `✗ model=${restored.model}/${backup.model} chatModel=${restored.chatModel}/${backup.chatModel}`
+      }`
+    );
   }
 
   return out;
@@ -333,6 +390,14 @@ async function runSmoke(getWindow) {
   const win = getWindow();
   const logs = [];
   const lines = [];
+  const { readConfig, writeConfig } = require('./store');
+  const backupWorkspace = readConfig().workspace;
+  const tempRoot = path.join(app.getPath('temp'), `mcm-smoke-${Date.now()}`);
+  const tempWorkspace = path.join(tempRoot, 'workspace');
+  const oldSnapshotRoot = process.env.MCM_SNAPSHOT_ROOT;
+  fs.mkdirSync(tempWorkspace, { recursive: true });
+  process.env.MCM_SNAPSHOT_ROOT = path.join(tempRoot, 'snapshots');
+  writeConfig({ workspace: tempWorkspace });
 
   // 抓一份完整输出用于汇总（同时照常打印，开发态仍然能直接看）
   const realLog = console.log;
@@ -358,6 +423,12 @@ async function runSmoke(getWindow) {
     console.log(err && err.stack ? err.stack : String(err));
   } finally {
     lic.restore();
+    // 冒烟测试必须隔离工作区与快照：否则会往用户真实工作区写探针文件，
+    // 还会用测试快照挤掉用户的回滚点。
+    try { writeConfig({ workspace: backupWorkspace }); } catch { /* 恢复失败不覆盖测试结论 */ }
+    if (oldSnapshotRoot === undefined) delete process.env.MCM_SNAPSHOT_ROOT;
+    else process.env.MCM_SNAPSHOT_ROOT = oldSnapshotRoot;
+    try { fs.rmSync(tempRoot, { recursive: true, force: true }); } catch { /* 忽略清理失败 */ }
     console.log = realLog;
 
     // 渲染进程日志也参与判定（CSP 违规、加载失败都出现在这里）
@@ -568,7 +639,21 @@ async function runSmokeBody(win, logs) {
           hasRail: !!document.getElementById('refRail'),
           hasPop: !!document.getElementById('refPop'),
           placeholder: el.placeholder,
+          hasModelSwitch: !!document.getElementById('btnModelSwitch'),
+          hasModelPop: !!document.getElementById('modelPop'),
+          modelName: document.getElementById('modelSwitchName')?.textContent || '',
+          effortName: document.getElementById('modelSwitchEffort')?.textContent || '',
         };
+
+        // 模型 / 思考强度面板：入口、模型列表、强度滑杆都要在真实 DOM 里可用
+        document.getElementById('btnModelSwitch')?.click();
+        await new Promise(r => setTimeout(r, 220));
+        out.modelPopOpen = !document.getElementById('modelPop')?.classList.contains('hidden');
+        out.modelItemCount = document.querySelectorAll('#modelList .mp-model-item').length;
+        out.effortRangeExists = !!document.getElementById('effortRange');
+        out.effortLabels = [...document.querySelectorAll('#modelPop .mp-scale span')].map(n => n.textContent);
+        document.getElementById('btnModelPopClose')?.click();
+        out.modelPopClosed = document.getElementById('modelPop')?.classList.contains('hidden');
 
         const type = async (v) => {
           el.focus();
@@ -632,6 +717,11 @@ async function runSmokeBody(win, logs) {
       ['refs.js 已加载', cw.hasRefsLib === true],
       ['drafts.js 已加载', cw.hasDraftLib === true],
       ['rail 与候选面板容器存在', cw.hasRail === true && cw.hasPop === true],
+      ['模型切换入口存在', cw.hasModelSwitch === true && cw.hasModelPop === true, cw.modelName],
+      ['模型面板能打开', cw.modelPopOpen === true],
+      ['模型列表有可选项', cw.modelItemCount > 0, `count=${cw.modelItemCount}`],
+      ['思考强度滑杆存在', cw.effortRangeExists === true && cw.effortLabels?.join('/') === '自动/低/中/高', cw.effortLabels?.join('/')],
+      ['模型面板能关闭', cw.modelPopClosed === true],
       ['placeholder 已被动态改写', Boolean(cw.placeholder) && !cw.placeholder.includes('实际提示由 app.js'), cw.placeholder],
       ['输入 @{ 弹出候选面板', cw.popOpened === true && cw.popItems > 0, `items=${cw.popItems}`],
       ['选中候选后插入正文', typeof cw.insertedText === 'string' && cw.insertedText.includes('@{'), cw.insertedText],
@@ -685,6 +775,20 @@ async function runSmokeBody(win, logs) {
         results.push(['workspace 可枚举', Array.isArray(files), files.length + ' 项']);
         const txt = await window.mcm.workspace.read('__not_exist__.txt');
         results.push(['workspace 读不存在文件不崩', typeof txt === 'string', '']);
+        const drive = (ws.match(/^([A-Za-z]):/) || [])[1];
+        if (drive) {
+          const other = drive.toLowerCase() === 'c' ? 'D:' : 'C:';
+          const crossTxt = await window.mcm.workspace.read(other + '\\\\Windows\\\\win.ini');
+          results.push(['workspace 跨盘越界被拒绝', crossTxt.includes('路径越界'), crossTxt.slice(0, 40)]);
+          const crossList = await window.mcm.workspace.list(other + '\\\\Windows');
+          results.push(['workspace 跨盘目录不可枚举', Array.isArray(crossList) && crossList.length === 0, String(crossList.length)]);
+        }
+        const selfImport = await window.mcm.input.import('数据', [ws + '\\\\input\\\\数据']);
+        results.push([
+          '目录复制到自身内部被拒绝',
+          Array.isArray(selfImport.files) && selfImport.files.some(f => !f.ok && /自身内部/.test(f.error || '')),
+          (selfImport.files || []).map(f => f.error || f.name).join('; '),
+        ]);
 
         // 4. 技能枚举
         const sk = await window.mcm.skills.info();
@@ -742,6 +846,15 @@ async function runSmokeBody(win, logs) {
        并没有可靠的等待：空态是 renderMessages() 每次重建 DOM 时**重新挂载**的，
        动画会随之重放 —— 所以"启动到现在已经过了很久"并不构成安全理由。
        判据与宣传截图共用 shot.js 里的同一份实现（同一事实不两处手抄）。 */
+    // 运行环境面板是异步加载的：必须等它真正打开后再关，否则关闭动作
+    // 会先执行、Promise 随后又把抽屉打开，截图里会多一块遮罩。
+    await new Promise((r) => setTimeout(r, 700));
+    await win.webContents.executeJavaScript(`
+      document.getElementById('btnDrawerClose')?.click();
+      document.getElementById('invClose')?.click();
+      document.getElementById('qrModalClose')?.click();
+      document.getElementById('btnModelPopClose')?.click();
+    `);
     const settled = await settleForShot(win, 'smoke');
     console.log(`截图前动效：入场 ${settled.entrance} 条已结束，终态校验 ${settled.checked} 条通过`);
     const img = await win.webContents.capturePage();

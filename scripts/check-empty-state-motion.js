@@ -14,7 +14,7 @@
  *     系统开着"减少动态效果"的用户会一直看动画，且拿不到静止终态。
  *
  *  ③ 动画终值 ≠ 元素静态样式值 ← 本轮最真实的风险
- *     花字引子 opacity 静态 .20 / 大字 .82 / 包袱 .72，关键帧终点必须写死成
+ *     花字引子 opacity 静态 .13 / 大字 .18 / 包袱 .16，关键帧终点必须写死成
  *     各自的原值；写错（或统一写 1）动画结束后视觉就永久偏了 ——
  *     fill:both 的终值会一直压着静态声明。宣传截图取的正是这个终态。
  *     反过来"越动越歪"也是同一件事：包袱静态 rotate(-3deg)，终值必须仍是它。
@@ -493,13 +493,13 @@ function selfTest() {
        （看起来"检查空转"，实际是用例失效。用例必须只破坏一处）。 */
     { tag: '②', why: '有 animation 但降级列表里没有它', css: (c) => c
       .replace('.es-brand  { animation: esRise', '.es-brand-orphan { animation: esRise') },
-    { tag: '③', why: '大字终值写 opacity:1（静态 .82）', css: (c) => c.replace(
+    { tag: '③', why: '大字终值写 opacity:1（静态 .18）', css: (c) => c.replace(
       /@keyframes esHeroIn \{[\s\S]*?\n\}/,
       '@keyframes esHeroIn {\n  from { opacity: 0; transform: translateY(13px) scale(.97); }\n  to   { opacity: 1; transform: none; }\n}',
     ) },
     { tag: '③', why: '包袱终值 rotate(-8deg)：越动越歪', css: (c) => c.replace(
-      '100% { opacity: .72; transform: rotate(-3deg); }',
-      '100% { opacity: .72; transform: rotate(-8deg); }',
+      '100% { opacity: .16; transform: rotate(-3deg); }',
+      '100% { opacity: .16; transform: rotate(-8deg); }',
     ) },
     { tag: '④', why: '给 bot-float 包装层加 transform 属性', js: (j) => j.replace(
       '<g class="bot-float">', '<g class="bot-float" transform="translate(0,2)">',

@@ -10,7 +10,7 @@
  *  - 工具链   = skills/mcm-tools（读 PDF / 读写 Excel / Word / LaTeX / 文献检索）
  * 提示词只给「路由」与「硬约束」，细节由 Agent 自己 read_file 渐进加载。
  */
-function buildSystemPrompt({ workspace, skillsRoot, config }) {
+function buildSystemPrompt({ workspace, skillsRoot }) {
   const wf = 'skills/mcm-workflow';
   const mf = 'skills/mcm-figure';
   const md = 'skills/mcm-diagram';
@@ -284,7 +284,8 @@ mcm_style.save(fig, "figures/result_q1_1")   # 同时出 .pdf + .png，并检查
 - 动手前把方案和默认选择讲清楚；不要反复追问，能自己判断的就自己判断并说明理由。
 - 每一步做完简要通报进展，别攒到最后才说。
 - **缺输入时要明确点名要什么**，不要凭猜测开工。
-${config?.autoApprove ? '' : '\n> 当前为「逐步确认」模式：每次调用工具前会请用户确认。\n'}`;
+- 命令和 Python 代码会在用户电脑上直接执行；严禁把 API Key、私钥、Cookie 等敏感信息写进命令、日志或外发请求。
+`;
 }
 
 module.exports = { buildSystemPrompt };

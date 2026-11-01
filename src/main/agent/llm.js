@@ -40,6 +40,9 @@ async function readError(res) {
  * 白名单比黑名单安全：以后再加内部字段也不用改这里。
  */
 const ALLOWED_MSG_FIELDS = ['role', 'content', 'name', 'tool_calls', 'tool_call_id'];
+const CONNECT_TIMEOUT_MS = 30000;
+const TEST_TIMEOUT_MS = 30000;
+const LIST_MODELS_TIMEOUT_MS = 15000;
 
 function sanitizeMessage(m) {
   const out = {};
@@ -83,36 +86,74 @@ function normalizeUsage(u) {
 }
 
 async function streamChat({ config, messages, tools, signal, onDelta, onReasoning, onToolCallStart }) {
-    const body = {
-      model: config.model,
-      // 只保留 OpenAI 规范字段 —— 我们给消息挂的 reasoning 等 UI 字段不能发给 API，
-      // 有些服务端对未知字段会直接 400
-      messages: messages.map(sanitizeMessage),
-      stream: true,
-      // ⚠️ 不加这个，多数 OpenAI 兼容接口**不会在流式响应里返回 usage** ——
-      // Token 仪表盘就没数据了。加完之后末尾会多一个 choices 为空的包，
-      // handleChunk 是先取 usage 再检查 choice，能正确接住。
-      stream_options: { include_usage: true },
-      temperature: typeof config.temperature === 'number' ? config.temperature : 0.3,
-    };
+  const effort = String(config.reasoningEffort || '').trim().toLowerCase();
+  const body = {
+    model: config.model,
+    // 只保留 OpenAI 规范字段 —— 我们给消息挂的 reasoning 等 UI 字段不能发给 API，
+    // 有些服务端对未知字段会直接 400
+    messages: messages.map(sanitizeMessage),
+    stream: true,
+    // ⚠️ 不加这个，多数 OpenAI 兼容接口**不会在流式响应里返回 usage** ——
+    // Token 仪表盘就没数据了。加完之后末尾会多一个 choices 为空的包，
+    // handleChunk 是先取 usage 再检查 choice，能正确接住。
+    stream_options: { include_usage: true },
+    temperature: typeof config.temperature === 'number' ? config.temperature : 0.3,
+  };
+  // auto 不传：不少 OpenAI 兼容网关没有实现 reasoning_effort，
+  // 显式带上未知字段会直接 400。只有用户主动选择低/中/高时才发送。
+  if (['low', 'medium', 'high'].includes(effort)) {
+    body.reasoning_effort = effort;
+  }
   if (config.maxTokens) body.max_tokens = config.maxTokens;
   if (tools && tools.length) {
     body.tools = tools;
     body.tool_choice = 'auto';
   }
 
-  const res = await fetch(joinUrl(config.baseUrl, '/chat/completions'), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.apiKey || 'EMPTY'}`,
-    },
-    body: JSON.stringify(body),
-    signal,
-  });
+  // 连接超时只覆盖“拿到响应头”之前；响应头到手后由下面的空闲超时接管。
+  // 不能直接把 AbortSignal.timeout 传给 fetch —— 它会在长流式回答中途把连接掐掉。
+  const requestAc = new AbortController();
+  const detachAbort = (() => {
+    if (!signal) return () => {};
+    if (signal.aborted) {
+      requestAc.abort();
+      return () => {};
+    }
+    const onAbort = () => requestAc.abort();
+    signal.addEventListener('abort', onAbort, { once: true });
+    return () => signal.removeEventListener('abort', onAbort);
+  })();
+  const connectTimer = setTimeout(() => requestAc.abort(new Error('连接服务商超时')), CONNECT_TIMEOUT_MS);
 
-  if (!res.ok) throw new Error(await readError(res));
-  if (!res.body) throw new Error('服务端未返回流式响应体');
+  let res;
+  try {
+    res = await fetch(joinUrl(config.baseUrl, '/chat/completions'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.apiKey || 'EMPTY'}`,
+      },
+      body: JSON.stringify(body),
+      signal: requestAc.signal,
+    });
+  } catch (err) {
+    detachAbort();
+    if (requestAc.signal.aborted && !(signal && signal.aborted)) {
+      throw new Error(`连接服务商超时（${CONNECT_TIMEOUT_MS / 1000} 秒内未返回响应头）`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(connectTimer);
+  }
+
+  if (!res.ok) {
+    detachAbort();
+    throw new Error(await readError(res));
+  }
+  if (!res.body) {
+    detachAbort();
+    throw new Error('服务端未返回流式响应体');
+  }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder('utf-8');
@@ -210,6 +251,8 @@ async function streamChat({ config, messages, tools, signal, onDelta, onReasonin
     // 出错时主动关掉连接，别把 socket 悬着
     try { await reader.cancel(); } catch { /* 关不掉也无所谓 */ }
     throw err;
+  } finally {
+    detachAbort();
   }
 
   const toolCalls = [...toolAcc.entries()]
@@ -238,6 +281,7 @@ async function testConnection(config) {
       max_tokens: 8,
       stream: false,
     }),
+    signal: AbortSignal.timeout(TEST_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(await readError(res));
   const json = await res.json();
@@ -268,7 +312,7 @@ async function listModels({ baseUrl, apiKey }) {
   const headers = { Authorization: `Bearer ${apiKey || 'EMPTY'}` };
   let res;
   try {
-    res = await fetch(url, { headers });
+    res = await fetch(url, { headers, signal: AbortSignal.timeout(LIST_MODELS_TIMEOUT_MS) });
   } catch (err) {
     return { ok: false, reason: '网络不通：' + (err.message || err) };
   }

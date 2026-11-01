@@ -4,7 +4,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { ipcMain, dialog, shell } = require('electron');
 
-const { PROVIDERS, readConfig, writeConfig, publicConfig } = require('./store');
+const {
+  PROVIDERS, readConfig, writeConfig, publicConfig,
+  activeModel, normalizeReasoningEffort,
+} = require('./store');
 const { testConnection, listModels } = require('./agent/llm');
 const { runAgent } = require('./agent/loop');
 const { buildSystemPrompt } = require('./agent/prompt');
@@ -12,6 +15,7 @@ const sessionTitle = require('./agent/session-title');
 const py = require('./runtime/python');
 const drawio = require('./runtime/drawio');
 const { getSkillsRoot, getDefaultWorkspace, getUserDataDir, getBrandDir } = require('./paths');
+const { isInside, resolveExistingInside } = require('./path-guard');
 const license = require('./license');
 const snapshot = require('./snapshot');
 const comps = require('./competitions');
@@ -165,6 +169,11 @@ function importInputs(cat, srcPaths) {
       const st = fs.statSync(src);
       if (st.isDirectory()) {
         const dest = uniquePath(path.join(dir, path.basename(src)));
+        // 把目录拖回它自己内部会边复制边长出新的子目录，最终无限递归。
+        // 例如把 input/数据/ 再拖到「赛题数据」槽位。
+        if (isInside(path.resolve(src), path.resolve(dest))) {
+          throw new Error('不能把目录复制到自身内部');
+        }
         copyDirSync(src, dest);
         files.push({ ok: true, name: path.basename(dest), kind: 'dir', bytes: 0 });
       } else if (st.isFile()) {
@@ -350,7 +359,8 @@ function registerIpc(getWindow) {
   });
 
   ipcMain.handle('config:test', async (_e, override) => {
-    const cfg = { ...readConfig(), ...(override || {}) };
+    const base = readConfig();
+    const cfg = { ...base, model: activeModel(base), ...(override || {}) };
     if (!cfg.apiKey) cfg.apiKey = readConfig().apiKey;
     try {
       return await testConnection(cfg);
@@ -476,8 +486,10 @@ function registerIpc(getWindow) {
 
   ipcMain.handle('workspace:list', (_e, rel) => {
     const ws = readConfig().workspace || getDefaultWorkspace();
-    const dir = rel ? path.resolve(ws, rel) : ws;
-    if (!path.relative(ws, dir).startsWith('..') === false && path.relative(ws, dir) !== '') {
+    let dir;
+    try {
+      dir = resolveExistingInside(ws, rel || '.', '列出目录');
+    } catch {
       return [];
     }
     if (!fs.existsSync(dir)) return [];
@@ -518,9 +530,10 @@ function registerIpc(getWindow) {
    */
   ipcMain.handle('workspace:openPath', (_e, rel) => {
     const ws = readConfig().workspace || getDefaultWorkspace();
-    const abs = path.resolve(ws, rel || '.');
-    const relCheck = path.relative(ws, abs);
-    if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
+    let abs;
+    try {
+      abs = resolveExistingInside(ws, rel || '.', '打开路径');
+    } catch {
       return { ok: false, error: '路径越界' };
     }
     shell.openPath(abs);
@@ -530,7 +543,13 @@ function registerIpc(getWindow) {
   ipcMain.handle('workspace:reveal', (_e, rel) => {
     { const g = licenseBlocked(); if (g.blocked) return { ok: false, licenseBlocked: true, error: g.error }; } // 打开产物
     const ws = readConfig().workspace || getDefaultWorkspace();
-    shell.showItemInFolder(path.resolve(ws, rel || '.'));
+    let abs;
+    try {
+      abs = resolveExistingInside(ws, rel || '.', '定位产物');
+    } catch {
+      return { ok: false, error: '路径越界' };
+    }
+    shell.showItemInFolder(abs);
     return true;
   });
 
@@ -558,8 +577,12 @@ function registerIpc(getWindow) {
 
   ipcMain.handle('workspace:read', (_e, rel) => {
     const ws = readConfig().workspace || getDefaultWorkspace();
-    const abs = path.resolve(ws, rel || '');
-    if (path.relative(ws, abs).startsWith('..')) return '（路径越界）';
+    let abs;
+    try {
+      abs = resolveExistingInside(ws, rel || '', '读取');
+    } catch {
+      return '（路径越界）';
+    }
     if (!fs.existsSync(abs)) return '（文件不存在）';
     const st = fs.statSync(abs);
     if (st.size > 3 * 1024 * 1024) return `（文件过大：${(st.size / 1048576).toFixed(1)}MB，请用系统程序打开）`;
@@ -572,8 +595,12 @@ function registerIpc(getWindow) {
 
   ipcMain.handle('workspace:dataUrl', (_e, rel) => {
     const ws = readConfig().workspace || getDefaultWorkspace();
-    const abs = path.resolve(ws, rel || '');
-    if (path.relative(ws, abs).startsWith('..')) return '';
+    let abs;
+    try {
+      abs = resolveExistingInside(ws, rel || '', '读取');
+    } catch {
+      return '';
+    }
     if (!fs.existsSync(abs)) return '';
     const ext = path.extname(abs).toLowerCase();
     const mime =
@@ -684,7 +711,7 @@ function registerIpc(getWindow) {
 
     const cfg = readConfig();
     const res = await sessionTitle.generateTitle({
-      config: cfg,
+      config: { ...cfg, model: activeModel(cfg), reasoningEffort: 'auto' },
       messages: [{ role: 'user', content }],
     });
 
@@ -770,7 +797,9 @@ function registerIpc(getWindow) {
   ipcMain.handle('python:status', async () => {
     const cfg = readConfig();
     const interpreters = await py.detectPython();
-    const active = cfg.pythonPath || py.getVenvPython() || interpreters[0]?.exe || '';
+    const active = (cfg.pythonPath && py.isPythonUsable(cfg.pythonPath))
+      ? cfg.pythonPath
+      : (py.getVenvPython() || interpreters[0]?.exe || '');
     let deps = null;
     if (active) deps = await py.checkPackages(active);
     return { interpreters, active, deps, groups: py.PACKAGE_GROUPS, venvDir: py.getVenvDir() };
@@ -811,8 +840,12 @@ function registerIpc(getWindow) {
       return { ok: false, error: '未检测到 draw.io 桌面版。请先安装后重试（https://github.com/jgraph/drawio-desktop/releases）。' };
     }
 
-    const input = path.resolve(ws, file);
-    if (path.relative(ws, input).startsWith('..')) return { ok: false, error: '路径越界' };
+    let input;
+    try {
+      input = resolveExistingInside(ws, file, '出图');
+    } catch {
+      return { ok: false, error: '路径越界' };
+    }
     if (!fs.existsSync(input)) return { ok: false, error: `文件不存在：${file}` };
 
     const fmt = format === 'png' ? 'png' : 'pdf';
@@ -829,7 +862,9 @@ function registerIpc(getWindow) {
 
   /* ---------------- 对话 ---------------- */
 
-  ipcMain.handle('chat:send', async (_e, { messages, sessionId, title, timeoutMs }) => {
+  ipcMain.handle('chat:send', async (_e, {
+    messages, sessionId, title, timeoutMs, model, reasoningEffort,
+  }) => {
     // ⚠️ 授权拦截必须在**主进程** —— 放渲染层的话，改一行前端就绕过去了。
     // 体验期内正常用；到期或未激活直接拒绝。
     const gate = licenseBlocked();
@@ -852,15 +887,22 @@ function registerIpc(getWindow) {
 
     const cfg = readConfig();
     if (!cfg.apiKey) return { ok: false, error: '尚未配置 API Key，请先在设置里填写。' };
-    if (!cfg.model) return { ok: false, error: '尚未选择模型。' };
+    const requestedModel = (String(model || '').trim() || activeModel(cfg)).slice(0, 200);
+    if (!requestedModel) return { ok: false, error: '尚未选择模型。' };
 
     const ws = ensureWorkspaceDirs(cfg.workspace || getDefaultWorkspace());
     if (!cfg.workspace) writeConfig({ workspace: ws });
 
     const skillsRoot = getSkillsRoot();
-    // 单次请求可以覆盖空闲超时（重试卡片用）
-    const runCfg = timeoutMs ? { ...cfg, streamIdleMs: timeoutMs } : cfg;
-    const system = { role: 'system', content: buildSystemPrompt({ workspace: ws, skillsRoot, config: cfg }) };
+    // 单次请求可以覆盖模型 / 思考强度 / 空闲超时。
+    // 渲染层直接随消息带上当前选择，避免用户刚切换就发送时，配置落盘还没完成。
+    const runCfg = {
+      ...cfg,
+      model: requestedModel,
+      reasoningEffort: normalizeReasoningEffort(reasoningEffort || cfg.reasoningEffort),
+      ...(timeoutMs ? { streamIdleMs: timeoutMs } : {}),
+    };
+    const system = { role: 'system', content: buildSystemPrompt({ workspace: ws, skillsRoot }) };
     const convo = [system, ...messages];
 
     currentAbort = new AbortController();
@@ -872,7 +914,7 @@ function registerIpc(getWindow) {
         messages: convo,
         emit: send,
         signal: currentAbort.signal,
-        pythonPath: cfg.pythonPath || py.getVenvPython() || 'python',
+        pythonPath: py.resolvePythonPath(cfg.pythonPath),
       });
 
       // 落盘会话（去掉 system，避免重复注入）

@@ -103,12 +103,23 @@
       <footer class="side-foot">
         <div class="sf-auth hidden" id="sideLicense"></div>
         <button class="sf-invite" type="button" id="btnInvite" title="邀请同学，双方都有好处">
-          <span class="sfi-ico">🎁</span>
+          <span class="sfi-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 12v8H4v-8M2 7h20v5H2zM12 7v13M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7z"/>
+            </svg>
+          </span>
           <span class="sfi-txt">邀请有礼<em id="sfInviteCode">······</em></span>
         </button>
         <!-- AI 使用声明草稿：原在赛事日历面板里，面板撤掉后挪到侧栏常驻 -->
         <button class="sf-declare" type="button" id="btnAiDraft" title="按当前赛事规定生成《AI工具使用详情》草稿到 reports/">
-          <span class="sfi-ico">📝</span>
+          <span class="sfi-ico" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+                 stroke-linecap="round" stroke-linejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <path d="M14 2v6h6M8 13h8M8 17h6"/>
+            </svg>
+          </span>
           <span class="sfi-txt">AI 声明草稿</span>
         </button>
         <button class="sf-contact" type="button" id="btnContact" title="点开扫码加我">
@@ -145,11 +156,80 @@
           placeholder="描述你的题目或任务（实际提示由 app.js 按当前状态动态设置）"></textarea>
         <div class="composer-bar">
           <span class="hint" id="statusHint"></span>
-          <!-- Token 读数：常驻显示，点开是完整仪表盘 -->
-          <button class="token-bar hidden" id="tokenBar" type="button" title="查看 Token 用量仪表盘"></button>
-          <div class="composer-btns">
-            <button id="btnStop" class="btn danger hidden">停止</button>
-            <button id="btnSend" class="btn primary">发送</button>
+          <div class="composer-actions">
+            <!-- Token 读数：常驻显示，点开是完整仪表盘 -->
+            <button class="token-bar hidden" id="tokenBar" type="button" title="查看 Token 用量仪表盘"></button>
+
+            <!-- 模型与思考强度：像 DSH / Codex 一样放在输入框右下角。
+                 面板向上展开，不挤占正文；选择只影响之后发送的消息。 -->
+            <div class="model-switch" id="modelSwitch">
+              <button class="model-switch-btn" id="btnModelSwitch" type="button"
+                      aria-haspopup="dialog" aria-expanded="false" aria-controls="modelPop"
+                      title="切换模型与思考强度">
+                <svg class="msw-spark" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 3l1.4 4.1L17.5 8.5l-4.1 1.4L12 14l-1.4-4.1-4.1-1.4 4.1-1.4L12 3z"/>
+                  <path d="M18.5 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8.8-2.2z"/>
+                </svg>
+                <span class="msw-model" id="modelSwitchName">未选模型</span>
+                <span class="msw-dot" aria-hidden="true"></span>
+                <span class="msw-effort" id="modelSwitchEffort">思考 自动</span>
+                <svg class="msw-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M8 10l4 4 4-4"/>
+                </svg>
+              </button>
+
+              <div class="model-pop hidden" id="modelPop" role="dialog" aria-modal="false"
+                   aria-label="模型与思考强度">
+                <div class="mp-head">
+                  <div>
+                    <b>模型与思考</b>
+                    <span>只影响之后发送的消息</span>
+                  </div>
+                  <button class="icon-btn" id="btnModelPopClose" type="button" title="关闭">✕</button>
+                </div>
+
+                <section class="mp-sec">
+                  <div class="mp-label">
+                    <span>模型</span>
+                    <button class="mp-link" id="btnManageModels" type="button">管理模型</button>
+                  </div>
+                  <label class="mp-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                         stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                      <circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>
+                    </svg>
+                    <input id="modelSearch" type="text" autocomplete="off" spellcheck="false"
+                           placeholder="筛选模型…" aria-label="筛选模型" />
+                  </label>
+                  <div class="mp-list" id="modelList" role="listbox" aria-label="可用模型"></div>
+                </section>
+
+                <section class="mp-sec mp-effort">
+                  <div class="mp-label">
+                    <span>思考强度</span>
+                    <b class="mp-effort-value" id="effortValue">自动</b>
+                  </div>
+                  <input class="mp-range" id="effortRange" type="range" min="0" max="3" step="1"
+                         value="0" aria-label="思考强度" />
+                  <div class="mp-scale" aria-hidden="true">
+                    <span>自动</span><span>低</span><span>中</span><span>高</span>
+                  </div>
+                  <p class="mp-hint">自动不额外传参；低 / 中 / 高会发送 <code>reasoning_effort</code>，需模型支持。</p>
+                </section>
+              </div>
+            </div>
+
+            <div class="composer-btns">
+              <button id="btnStop" class="btn danger stop-btn hidden" type="button">停止</button>
+              <button id="btnSend" class="send-btn" type="button" title="发送（Enter）" aria-label="发送">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 19V5M6 11l6-6 6 6"/>
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
       </div>

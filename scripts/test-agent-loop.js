@@ -13,6 +13,7 @@ const path = require('node:path');
 const os = require('node:os');
 
 const { runAgent } = require('../src/main/agent/loop');
+const { activeModel, normalizeReasoningEffort } = require('../src/main/store');
 
 const WORKSPACE = path.join(os.tmpdir(), 'mcm-agent-loop-test');
 const SKILLS_ROOT = path.join(__dirname, '..', 'resources', 'skills');
@@ -134,6 +135,7 @@ async function main() {
     baseUrl: `http://127.0.0.1:${port}/v1`,
     apiKey: 'test-key',
     model: 'mock-model',
+    reasoningEffort: 'high',
     temperature: 0,
     maxTokens: 1024,
     maxIterations: 10,
@@ -194,6 +196,22 @@ async function main() {
   push('assistant 消息带 tool_calls', Boolean(assistantWithTools), '');
 
   push('请求里带上了 tools 定义', Array.isArray(secondReq?.tools) && secondReq.tools.length === 7, `实际 ${secondReq?.tools?.length} 个`);
+  push('请求使用当前选中的模型', seenRequests.slice(0, 3).every((r) => r.model === 'mock-model'), seenRequests.map((r) => r.model).join(','));
+  push(
+    '请求带上 reasoning_effort=high',
+    seenRequests.slice(0, 3).every((r) => r.reasoning_effort === 'high'),
+    seenRequests.map((r) => r.reasoning_effort || '(无)').join(','),
+  );
+  push(
+    '思考强度白名单会兜底未知值',
+    normalizeReasoningEffort('HIGH') === 'high' && normalizeReasoningEffort('max') === 'auto',
+    `${normalizeReasoningEffort('HIGH')} / ${normalizeReasoningEffort('max')}`,
+  );
+  push(
+    '聊天模型优先使用 chatModel',
+    activeModel({ model: 'main', models: ['main', 'alt'], chatModel: 'alt' }) === 'alt',
+    activeModel({ model: 'main', models: ['main', 'alt'], chatModel: 'alt' }),
+  );
 
   const finalMsg = result.messages[result.messages.length - 1];
   push('最终返回文本', finalMsg?.role === 'assistant' && String(finalMsg.content).includes('完成'), String(finalMsg?.content).slice(0, 40));
@@ -212,10 +230,11 @@ async function main() {
 
   phase = 'abort';
   callCount = 0;
+  const abortStart = seenRequests.length;
   const ctrl = new AbortController();
   let abortedOnce = false;
   const abortResult = await runAgent({
-    config: { ...config, maxIterations: 5 },
+    config: { ...config, maxIterations: 5, reasoningEffort: 'auto' },
     workspace: WORKSPACE,
     skillsRoot: SKILLS_ROOT,
     messages: [
@@ -237,6 +256,11 @@ async function main() {
   push('中断场景：assistant 带 tool_calls', Boolean((abortResult.messages || []).find((m) => m.role === 'assistant' && m.tool_calls)), '');
   const orphans = validateHistory(abortResult.messages || []);
   push('中断场景：无孤儿 tool_calls（可继续对话）', orphans.length === 0, orphans.join(',') || '每条 tool_call 都有应答');
+  push(
+    'reasoning_effort=auto 时不发该字段',
+    seenRequests.length > abortStart && !Object.prototype.hasOwnProperty.call(seenRequests[seenRequests.length - 1], 'reasoning_effort'),
+    JSON.stringify(seenRequests[seenRequests.length - 1]?.reasoning_effort),
+  );
 
   /* ---------- 输出 ---------- */
   console.log('');

@@ -27,6 +27,9 @@ const KEEP = 8;
 const SKIP_DIRS = new Set(['_backup', 'snapshots', '.git']);
 
 function snapshotsRoot(userDataDir) {
+  // 冒烟测试通过环境变量把快照隔离到临时目录，避免 evict 用户真实回滚点。
+  // 正常启动不设置该变量，行为不变。
+  if (process.env.MCM_SNAPSHOT_ROOT) return path.resolve(process.env.MCM_SNAPSHOT_ROOT);
   return path.join(userDataDir, 'snapshots');
 }
 
