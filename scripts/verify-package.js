@@ -46,6 +46,7 @@ for (const f of [
   '/src/preload/index.js',
   '/src/main/index.js',
   '/src/main/ipc.js',
+  '/src/main/path-guard.js',
 ]) {
   check(f, has(f));
 }
@@ -70,6 +71,8 @@ check('无 tools/ 签发器', toolsLeak.length === 0, toolsLeak.join(', '));
 console.log('\n=== ③ 渲染层预览桩不进包（_ 前缀）===');
 const previews = files.filter((f) => /^\/src\/renderer\/_/.test(f));
 check('无 _*.html 预览桩', previews.length === 0, previews.slice(0, 3).join(', '));
+const runtimeNodeModules = files.filter((f) => /^\/node_modules\//.test(f));
+check('无 node_modules（构建工具不随客户版分发）', runtimeNodeModules.length === 0, runtimeNodeModules.slice(0, 5).join(', '));
 
 console.log('\n=== ④ 技能库（extraResources，不在 asar 内）===');
 const skillsDir = path.join(path.dirname(asarPath), 'skills');
@@ -155,6 +158,7 @@ if (pkgJson) {
   const want = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   check(`版本与仓库一致（${want.version}）`, j.version === want.version, `包内 ${j.version}`);
   check(`产品名 = ${want.productName}`, j.productName === want.productName, `包内 ${j.productName}`);
+  check('包内 package.json 无生产依赖', !j.dependencies || Object.keys(j.dependencies).length === 0, JSON.stringify(j.dependencies || {}));
 }
 
 const compJs = read('src/main/competitions.js');

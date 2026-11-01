@@ -1,6 +1,8 @@
 # 会话框内容设计说明（对标 DSH）
 
 > 日期：2026-10-09 · 状态：已与用户确认 · 参考实现：[deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)
+>
+> 后续变更：构建工具已全部移到 `devDependencies`，客户包不再包含 `node_modules`。
 
 ## 背景与目标
 

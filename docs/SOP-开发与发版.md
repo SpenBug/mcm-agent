@@ -253,7 +253,7 @@ npm test
 ```powershell
 npm run dist
 ```
-产物在 `dist/`：`阿一古数模 Setup <版本>.exe` + `阿一古数模-便携版-<版本>.exe`
+产物在 `dist/`：`ayigu-mcm-agent-setup-<版本>.exe` + `ayigu-mcm-agent-portable-<版本>.exe`
 
 > 打包失败先看 `dist/build-error.log`（脚本会把错误原文落盘，
 > 因为终端管道很容易把堆栈吞掉）。
@@ -285,7 +285,7 @@ npm run smoke:packaged   # ★ 对打包出的 exe 跑冒烟（约 5 分钟）
 ```powershell
 curl.exe -X POST -H "Authorization: Bearer $TOKEN" `
   -H "Content-Type: application/octet-stream" `
-  --data-binary "@dist/阿一古数模 Setup 1.3.0.exe" `
+  --data-binary "@dist/ayigu-mcm-agent-setup-1.3.0.exe" `
   "https://uploads.github.com/repos/<owner>/<repo>/releases/<id>/assets?name=ayigu-mcm-agent-setup-1.3.0.exe"
 ```
 
@@ -331,7 +331,7 @@ git rev-parse HEAD   # 两者必须一致
 | `sync-keygen-options.js --check` | 签发器赛事选项与定价漂移（曾漏 3 个赛事、亚太赛还是旧价） |
 | `sync-issuer-app.js --check` | 独立签发器应用的 vendor 副本与真源漂移（改了定价/公钥/核心逻辑忘了同步 → 应用按旧价卖卡）。同时硬拦 **vendor 里出现私钥或台账** —— 应用会被分发/拷贝，带了这些等于把发卡权送人 |
 | `issuer-app-test.js` | 第 4 个签发入口（桌面应用）的离线链路：结构完整、`main.js` 不自算卡号/价格、vendor 无敏感内容、签发→验签→台账→邀请→导入导出 |
-| `issuer-consistency-test.js` | 四个入口（命令行 / 旧 HTTP 服务 / keygen 网页 / 桌面应用）与客户端**同源**：公钥、赛事、定价、competition 透传、台账列映射 |
+| `issuer-consistency-test.js` | 四个入口（命令行 / 旧 HTTP 服务 / keygen 网页 / 桌面应用）与客户端**同源**：公钥、时长档位、定价、plan 透传、台账列映射 |
 | `icon-check.js` | 图标形状退化 / 产物过期（用**内容指纹**，不用 mtime） |
 
 **孤儿守卫**：`run-all-tests.js` 会检查 `scripts/*-test.js` **与 `scripts/check-*.js`**
@@ -393,8 +393,7 @@ styles.css 的注释（"守卫盯着这条"），文件却还没落地 —— **
 - [ ] **私钥离线备份**（`keys/license-private.pem` 只在这一台机器，丢了生意就断了）
 - [ ] 代码签名证书（等有用户因警告放弃购买，或出现杀软误报投诉）
 - [ ] 支付合规（个人收款码不得用于经营性收款 —— 见卖家手册第十节）
-- [ ] 若接自动更新：注意 `latest.yml` 里的文件名是 `mcm-agent-setup-*.exe`，
-      与实际产物 `阿一古数模 Setup *.exe` 不一致，接之前要先解决
+- [ ] 若接自动更新：`latest.yml` 与实际产物已统一为 `ayigu-mcm-agent-setup-*.exe`
 
 ---
 

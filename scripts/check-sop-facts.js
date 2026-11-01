@@ -90,8 +90,8 @@ console.log('\n=== ⑤ 产物命名 ===');
 const distDir = path.join(ROOT, 'dist');
 if (fs.existsSync(distDir)) {
   const exes = fs.readdirSync(distDir).filter((f) => f.endsWith('.exe'));
-  check(`dist 里的 ${exes.length} 个 exe 都是文档描述的中文命名`,
-    exes.every((f) => /^阿一古数模/.test(f)), exes.join(', '));
+  check(`dist 里的 ${exes.length} 个 exe 都是文档描述的英文资产名`,
+    exes.every((f) => /^ayigu-mcm-agent-(?:setup|portable)-/.test(f)), exes.join(', '));
 }
 
 // ---------- ⑥ 速查表里的路径可用 ----------

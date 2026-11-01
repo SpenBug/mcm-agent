@@ -11,8 +11,10 @@
   "license": "MIT",
   "private": true,
   "devDependencies": {
-    "electron": "^44.4.3",
-    "electron-builder": "^26.15.3"
+    "@electron/asar": "^3.4.1",
+    "app-builder-lib": "^26.18.1",
+    "electron": "^44.10.1",
+    "electron-builder": "^26.18.1"
   },
   "scripts": {
     "start": "node scripts/dev.js",
@@ -99,13 +101,11 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "阿一古数模"
+      "shortcutName": "阿一古数模",
+      "artifactName": "ayigu-mcm-agent-setup-${version}.exe"
     },
     "portable": {
-      "artifactName": "阿一古数模-便携版-${version}.exe"
+      "artifactName": "ayigu-mcm-agent-portable-${version}.exe"
     }
-  },
-  "dependencies": {
-    "app-builder-lib": "^26.15.3"
   }
 }
