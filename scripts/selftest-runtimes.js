@@ -26,6 +26,7 @@ app.on('window-all-closed', (e) => e.preventDefault());
 app.whenReady().then(async () => {
   const { executeTool } = require('../src/main/agent/tools');
   const { getSkillsRoot } = require('../src/main/paths');
+  const pyrt = require('../src/main/runtime/python');
 
   const skillsRoot = getSkillsRoot();
   const ws = path.join(os.tmpdir(), `mcm-rt-${Date.now()}`);
@@ -83,6 +84,20 @@ app.whenReady().then(async () => {
       console.log(`${blocked ? '✓' : '✗'} ${label} → ${e.message.slice(0, 80)}`);
       if (blocked) pass += 1; else fail += 1;
     }
+  }
+
+  console.log('\n=== Python 解释器可用性 ===');
+  const fallbackPython = pyrt.resolvePythonPath('');
+  const missingPython = path.join(ws, 'definitely-missing-python.exe');
+  const fallbackFromBroken = pyrt.resolvePythonPath(missingPython);
+  const pyChecks = [
+    ['可用 Python 能被识别', pyrt.isPythonUsable(fallbackPython)],
+    ['不存在的解释器被判为不可用', !pyrt.isPythonUsable(missingPython)],
+    ['首选解释器损坏时会回退', fallbackFromBroken !== missingPython],
+  ];
+  for (const [label, ok] of pyChecks) {
+    console.log(`${ok ? '✓' : '✗'} ${label}  [${fallbackPython} → ${fallbackFromBroken}]`);
+    if (ok) pass += 1; else fail += 1;
   }
 
   fs.rmSync(ws, { recursive: true, force: true });

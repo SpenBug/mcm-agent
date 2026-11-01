@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 const { runProcess } = require('../agent/tools');
 const { getPythonEnvDir } = require('../paths');
 
@@ -63,13 +64,50 @@ function getVenvDir() {
   return getPythonEnvDir();
 }
 
-function getVenvPython() {
+/**
+ * Python 可执行文件是否存在且能真正启动。
+ *
+ * 只看 fs.existsSync 不够：venv 的 python.exe 只是一个启动器，
+ * 它的母解释器被删除/移动后，文件仍然在，但一启动就报
+ * “did not find executable at ...”。这会把整个依赖检查误判成全部缺失。
+ */
+function isPythonUsable(pythonPath) {
+  const raw = String(pythonPath || '').trim();
+  if (!raw) return false;
+  const looksLikePath = path.isAbsolute(raw) || /[\\/]/.test(raw);
+  if (looksLikePath && !fs.existsSync(raw)) return false;
+  // 允许 "python" / "py -3" 这类命令名；绝对路径带空格时必须整体当一个参数。
+  const parts = looksLikePath ? [raw] : raw.split(/\s+/).filter(Boolean);
+  try {
+    const r = spawnSync(parts[0], [...parts.slice(1), '-c', 'import sys; print(sys.executable)'], {
+      encoding: 'utf8',
+      timeout: 5000,
+      windowsHide: true,
+    });
+    return r.status === 0 && Boolean(String(r.stdout || '').trim());
+  } catch {
+    return false;
+  }
+}
+
+function getVenvPython({ validate = true } = {}) {
   const dir = getVenvDir();
   const candidates =
     process.platform === 'win32'
       ? [path.join(dir, 'Scripts', 'python.exe')]
       : [path.join(dir, 'bin', 'python3'), path.join(dir, 'bin', 'python')];
-  return candidates.find((p) => fs.existsSync(p)) || null;
+  return candidates.find((p) => fs.existsSync(p) && (!validate || isPythonUsable(p))) || null;
+}
+
+/**
+ * 选一个能用的 Python：用户显式选择 > 可用 venv > PATH 里的 python。
+ * 注意不能直接返回“存在但坏了”的 venv 路径。
+ */
+function resolvePythonPath(preferred = '') {
+  if (preferred && isPythonUsable(preferred)) return preferred;
+  const venv = getVenvPython();
+  if (venv) return venv;
+  return 'python';
 }
 
 /** 检查某个解释器里各分组的依赖是否齐备 */
@@ -114,7 +152,9 @@ print(json.dumps({"missing": missing, "installed": installed, "python": sys.vers
   }
 
   if (r.code !== 0) {
-    return { ok: false, error: r.stderr.trim() || `退出码 ${r.code}`, missing: wanted, installed: [] };
+    // 解释器启动失败 ≠ 所有包都缺失。分开报，避免把“母 Python 丢了”
+    // 误显示成“9 个依赖一个都没有”。
+    return { ok: false, error: r.stderr.trim() || `Python 解释器退出码 ${r.code}`, missing: [], installed: [] };
   }
   try {
     const last = r.stdout.trim().split(/\r?\n/).filter(Boolean).pop();
@@ -131,6 +171,17 @@ async function ensureVenv(basePython, onOutput) {
   if (venvPython) return venvPython;
 
   const dir = getVenvDir();
+  const existing = getVenvPython({ validate: false });
+  if (existing) {
+    // 旧 venv 的启动器还在但母 Python 已失效：先移走，避免在坏环境上覆盖安装。
+    const broken = `${dir}.broken-${Date.now()}`;
+    try {
+      fs.renameSync(dir, broken);
+      if (onOutput) onOutput({ stream: 'stdout', text: `旧 Python 环境无法启动，已移到：${broken}\n` });
+    } catch (err) {
+      throw new Error(`旧 Python 环境无法启动，且无法移走（${err.message}）。请关闭占用该目录的程序后重试。`);
+    }
+  }
   fs.mkdirSync(path.dirname(dir), { recursive: true });
   const r = await runProcess(`"${basePython}" -m venv "${dir}"`, {
     cwd: process.cwd(),
@@ -167,6 +218,8 @@ module.exports = {
   detectPython,
   getVenvPython,
   getVenvDir,
+  isPythonUsable,
+  resolvePythonPath,
   checkPackages,
   ensureVenv,
   installPackages,
