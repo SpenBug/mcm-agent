@@ -76,9 +76,14 @@ function createWindow() {
       preload: path.join(__dirname, '..', 'preload', 'index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
     },
   });
+
+  // 应用不需要摄像头/麦克风/通知/剪贴板读取等浏览器权限。
+  // 默认拒绝，避免被注入页面借权限 API 扩大攻击面。
+  mainWindow.webContents.session.setPermissionRequestHandler((_wc, _permission, cb) => cb(false));
+  mainWindow.webContents.session.setPermissionCheckHandler(() => false);
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));

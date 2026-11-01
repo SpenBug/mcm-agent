@@ -6,6 +6,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const { executeTool } = require('../src/main/agent/tools');
+const { isInside, resolveInside, resolveExistingInside } = require('../src/main/path-guard');
 
 const ROOT = path.join(os.tmpdir(), 'pathtest-' + Date.now());
 const WS = path.join(ROOT, '工作区');
@@ -20,6 +21,17 @@ fs.mkdirSync(path.join(ROOT, '外面'), { recursive: true });
 fs.writeFileSync(path.join(ROOT, '外面', 'secret.txt'), 'SECRET', 'utf8');
 
 const ctx = { workspace: WS, skillsRoot: SK };
+
+function checkGuard(name, fn) {
+  try {
+    const ok = fn();
+    console.log(`  ${ok ? 'v' : 'x'} ${name}`);
+    return ok;
+  } catch (e) {
+    console.log(`  x ${name} -> 抛错: ${e.message.slice(0, 70)}`);
+    return false;
+  }
+}
 
 // expect: 期望读到的内容特征（防止"读到了但读错文件"）
 async function tryRead(label, p, expect) {
@@ -59,6 +71,48 @@ async function tryRead(label, p, expect) {
   const g = await tryRead('越界：.. 跳出', '../../外面/secret.txt');
   const h = await tryRead('越界：技能库的 ..', 'skills/../../外面/secret.txt');
 
+  console.log('');
+  console.log('=== IPC 路径守卫（跨盘 / ..foo / realpath）===');
+  const guardOk = checkGuard('工作区内相对路径通过', () => isInside(WS, path.join(WS, 'reports', '规则卡.md')));
+  const guardParent = checkGuard('父目录跳转被拒绝', () => {
+    try {
+      resolveInside(WS, '..', '读取');
+      return false;
+    } catch {
+      return true;
+    }
+  });
+  const guardDotName = checkGuard('..foo 是合法文件名，不误杀', () => {
+    const p = resolveInside(WS, '..foo', '读取');
+    return p.endsWith(`${path.sep}..foo`);
+  });
+  const guardCrossDrive = checkGuard('Windows 跨盘路径被拒绝', () => {
+    if (process.platform !== 'win32') return true;
+    const root = path.parse(WS).root;
+    const other = root.toLowerCase() === 'c:\\' ? 'D:\\outside-secret.txt' : 'C:\\outside-secret.txt';
+    return isInside(WS, other) === false;
+  });
+  const guardRealpath = checkGuard('符号链接/junction 指向外部被拒绝', () => {
+    if (process.platform !== 'win32') return true;
+    const link = path.join(WS, 'escape-link');
+    const outside = path.join(ROOT, '外面');
+    try {
+      fs.symlinkSync(outside, link, 'junction');
+    } catch {
+      return true; // 没有创建链接权限时跳过，不把环境限制误报成代码失败
+    }
+    try {
+      try {
+        resolveExistingInside(WS, 'escape-link/secret.txt', '读取');
+        return false;
+      } catch {
+        return true;
+      }
+    } finally {
+      try { fs.rmdirSync(link); } catch { /* ignore */ }
+    }
+  });
+
   // run_python 的 script 参数也要能指向技能库
   const pyOk = await (async () => {
     try {
@@ -74,7 +128,8 @@ async function tryRead(label, p, expect) {
     }
   })();
 
-  const pass = a && b && c && d && e && !f && !g && !h && pyOk;
+  const pass = a && b && c && d && e && !f && !g && !h && pyOk
+    && guardOk && guardParent && guardDotName && guardCrossDrive && guardRealpath;
   console.log('');
   console.log(pass ? '=== ✓ 全部符合预期 ===' : '=== ✗ 有不符合预期的项 ===');
   fs.rmSync(ROOT, { recursive: true, force: true });

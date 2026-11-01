@@ -5,6 +5,7 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 const MAX_OUTPUT = 30000;
+const MAX_CAPTURE = MAX_OUTPUT * 2;
 const DEFAULT_TIMEOUT = 180000;
 const MAX_TIMEOUT = 900000;
 
@@ -220,6 +221,19 @@ function runProcess(command, { cwd, timeout, shell, onOutput, workspace }) {
     let stdout = '';
     let stderr = '';
     let killed = false;
+    let emitted = 0;
+
+    const appendCapped = (current, text) => {
+      if (current.length >= MAX_CAPTURE) return current;
+      return current + text.slice(0, MAX_CAPTURE - current.length);
+    };
+    const emitCapped = (stream, text) => {
+      if (!onOutput || emitted >= MAX_CAPTURE) return;
+      const room = MAX_CAPTURE - emitted;
+      const chunk = text.slice(0, room);
+      emitted += chunk.length;
+      if (chunk) onOutput({ stream, text: chunk });
+    };
 
     const timer = setTimeout(() => {
       killed = true;
@@ -236,13 +250,13 @@ function runProcess(command, { cwd, timeout, shell, onOutput, workspace }) {
 
     child.stdout.on('data', (d) => {
       const s = d.toString('utf8');
-      stdout += s;
-      if (onOutput) onOutput({ stream: 'stdout', text: s });
+      stdout = appendCapped(stdout, s);
+      emitCapped('stdout', s);
     });
     child.stderr.on('data', (d) => {
       const s = d.toString('utf8');
-      stderr += s;
-      if (onOutput) onOutput({ stream: 'stderr', text: s });
+      stderr = appendCapped(stderr, s);
+      emitCapped('stderr', s);
     });
 
     child.on('error', (err) => {
@@ -373,6 +387,7 @@ async function executeTool(name, args, ctx) {
     }
 
     case 'list_files': {
+      if (String(a.pattern || '').length > 1000) throw new Error('glob 模式过长');
       const root = a.root ? resolveRead(a.root) : workspace;
       const re = globToRegExp(a.pattern);
       const all = [];
@@ -385,6 +400,7 @@ async function executeTool(name, args, ctx) {
     }
 
     case 'search_text': {
+      if (String(a.pattern || '').length > 2000) throw new Error('正则表达式过长');
       const root = a.root ? resolveRead(a.root) : workspace;
       let re;
       try {
@@ -395,7 +411,7 @@ async function executeTool(name, args, ctx) {
       const globRe = a.glob ? globToRegExp(a.glob) : null;
       const all = [];
       walk(root, all);
-      const max = a.max_results || 60;
+      const max = Math.min(Math.max(Number(a.max_results) || 60, 1), 300);
       const out = [];
       for (const f of all) {
         if (globRe && !globRe.test(path.basename(f))) continue;
@@ -420,6 +436,7 @@ async function executeTool(name, args, ctx) {
     }
 
     case 'run_command': {
+      if (String(a.command || '').length > 20000) throw new Error('命令过长');
       const cwd = a.cwd ? resolveInside(workspace, a.cwd, '工作目录') : workspace;
       const r = await runProcess(a.command, { cwd, timeout: a.timeout, shell: true, onOutput, workspace });
       const parts = [`退出码：${r.code}${r.killed ? '（超时被终止）' : ''}`];
@@ -445,6 +462,7 @@ async function executeTool(name, args, ctx) {
         //    （实测：`" & echo PWNED > 路径` 真的执行了）。
         argv = [...base, abs, ...(Array.isArray(a.args) ? a.args.map(String) : [])];
       } else if (a.code) {
+        if (String(a.code).length > 1024 * 1024) throw new Error('Python 代码片段超过 1MB');
         const tmp = path.join(workspace, '.mcm-agent', `snippet_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.py`);
         fs.mkdirSync(path.dirname(tmp), { recursive: true });
         fs.writeFileSync(tmp, a.code, 'utf8');
